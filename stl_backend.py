@@ -2,8 +2,7 @@ import numpy as np
 from stl import mesh
 import io
 import tempfile
-from mpl_toolkits import mplot3d
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 
 def load_stl(file_bytes):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".stl") as tmp:
@@ -35,20 +34,36 @@ def apply_transform(stl_mesh, axis, angle_deg, dx, dy, dz):
     return stl_mesh
 
 def render_mesh(stl_mesh):
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    ax.add_collection3d(mplot3d.art3d.Poly3DCollection(stl_mesh.vectors, alpha=0.3, edgecolor='k'))
-    scale = stl_mesh.points.flatten()
-    ax.auto_scale_xyz(scale, scale, scale)
-    ax.set_box_aspect([1,1,1])
-    buf = io.BytesIO()
-    plt.savefig(buf, format='png')
-    plt.close(fig)
-    buf.seek(0)
-    return buf
+    x, y, z = [], [], []
+    I, J, K = [], [], []
+    idx = 0
+    for vec in stl_mesh.vectors:
+        for vertex in vec:
+            x.append(vertex[0])
+            y.append(vertex[1])
+            z.append(vertex[2])
+        I.append(idx)
+        J.append(idx + 1)
+        K.append(idx + 2)
+        idx += 3
+
+    mesh3d = go.Mesh3d(
+        x=x, y=y, z=z,
+        i=I, j=J, k=K,
+        color='lightblue',
+        opacity=0.5,
+        name='STL Model'
+    )
+
+    fig = go.Figure(data=[mesh3d])
+    fig.update_layout(
+        scene=dict(aspectmode='data'),
+        margin=dict(l=0, r=0, t=0, b=0),
+    )
+    return fig
 
 def save_stl_bytes(stl_mesh):
     f = io.BytesIO()
-    stl_mesh.save(f, mode=stl_mesh.mode)
+    stl_mesh.save(f, mode=mesh.BINARY)
     f.seek(0)
     return f
