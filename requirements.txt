@@ -1,0 +1,5 @@
+streamlit
+vedo
+trimesh
+numpy
+imageio
