@@ -33,6 +33,18 @@ def apply_transform(stl_mesh, axis, angle_deg, dx, dy, dz):
     stl_mesh.z += dz
     return stl_mesh
 
+def apply_scale(stl_mesh, axis, target_length):
+    vectors = stl_mesh.vectors
+    axis_index = "XYZ".index(axis)
+    min_val = np.min(vectors[:, :, axis_index])
+    max_val = np.max(vectors[:, :, axis_index])
+    current_length = max_val - min_val
+    if current_length == 0:
+        return stl_mesh  # 스케일 불가
+    scale_factor = target_length / current_length
+    stl_mesh.vectors *= scale_factor
+    return stl_mesh
+
 def render_mesh(stl_mesh):
     x, y, z = [], [], []
     I, J, K = [], [], []
