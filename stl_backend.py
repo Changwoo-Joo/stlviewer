@@ -5,7 +5,9 @@ from mpl_toolkits import mplot3d
 import matplotlib.pyplot as plt
 
 def load_stl(file_bytes):
-    return mesh.Mesh(io.BytesIO(file_bytes))  # 수정된 부분
+    f = io.BytesIO(file_bytes)
+    data = np.frombuffer(f.read(), dtype=mesh.Mesh.dtype)
+    return mesh.Mesh(data)
 
 def apply_transform(stl_mesh, axis, angle_deg, dx, dy, dz):
     angle_rad = np.deg2rad(angle_deg)
