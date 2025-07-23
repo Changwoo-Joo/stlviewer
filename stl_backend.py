@@ -63,7 +63,12 @@ def render_mesh(stl_mesh):
     return fig
 
 def save_stl_bytes(stl_mesh):
-    f = io.BytesIO()
-    stl_mesh.save(f)  # ✅ mode 없이 저장
-    f.seek(0)
-    return f
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".stl") as tmp:
+        stl_mesh.save(tmp.name)
+        tmp.flush()
+        path = tmp.name
+
+    with open(path, "rb") as f:
+        data = f.read()
+
+    return io.BytesIO(data)
