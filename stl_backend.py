@@ -1,13 +1,16 @@
 import numpy as np
 from stl import mesh
 import io
+import tempfile
 from mpl_toolkits import mplot3d
 import matplotlib.pyplot as plt
 
 def load_stl(file_bytes):
-    f = io.BytesIO(file_bytes)
-    data = np.frombuffer(f.read(), dtype=mesh.Mesh.dtype)
-    return mesh.Mesh(data)
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".stl") as tmp:
+        tmp.write(file_bytes)
+        tmp.flush()
+        path = tmp.name
+    return mesh.Mesh.from_file(path)
 
 def apply_transform(stl_mesh, axis, angle_deg, dx, dy, dz):
     angle_rad = np.deg2rad(angle_deg)
