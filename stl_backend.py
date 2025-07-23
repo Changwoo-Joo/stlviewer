@@ -59,6 +59,20 @@ def render_mesh(stl_mesh):
         K.append(idx + 2)
         idx += 3
 
+    xmin, xmax = np.min(x), np.max(x)
+    ymin, ymax = np.min(y), np.max(y)
+    zmin, zmax = np.min(z), np.max(z)
+
+    xlen = xmax - xmin
+    ylen = ymax - ymin
+    zlen = zmax - zmin
+
+    title_text = (
+        f"X: {xmin:.2f} ~ {xmax:.2f} ({xlen:.2f}mm), "
+        f"Y: {ymin:.2f} ~ {ymax:.2f} ({ylen:.2f}mm), "
+        f"Z: {zmin:.2f} ~ {zmax:.2f} ({zlen:.2f}mm)"
+    )
+
     mesh3d = go.Mesh3d(
         x=x, y=y, z=z,
         i=I, j=J, k=K,
@@ -69,8 +83,9 @@ def render_mesh(stl_mesh):
 
     fig = go.Figure(data=[mesh3d])
     fig.update_layout(
+        title=dict(text=title_text, x=0.5, xanchor="center"),
         scene=dict(aspectmode='data'),
-        margin=dict(l=0, r=0, t=0, b=0),
+        margin=dict(l=0, r=0, t=60, b=0),
     )
     return fig
 
