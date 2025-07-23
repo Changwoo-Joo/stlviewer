@@ -64,6 +64,6 @@ def render_mesh(stl_mesh):
 
 def save_stl_bytes(stl_mesh):
     f = io.BytesIO()
-    stl_mesh.save(f, mode='binary')  # ← 여기에서 문자열 'binary' 사용
+    stl_mesh.save(f)  # ✅ mode 없이 저장
     f.seek(0)
     return f
