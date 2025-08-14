@@ -3,10 +3,7 @@ import io
 import os
 import tempfile
 import numpy as np
-
-# numpy-stl
 from stl import mesh
-# 렌더용
 import plotly.graph_objects as go
 
 
@@ -59,8 +56,8 @@ def get_centroid(stl_mesh: mesh.Mesh) -> np.ndarray:
     return np.mean(stl_mesh.vectors.reshape(-1, 3), axis=0)
 
 
-# ---------- Rotation Matrices ----------
-def rot_matrix(axis: str, angle_deg: float) -> np.ndarray:
+# ---------- Rotation ----------
+def _rot_matrix(axis: str, angle_deg: float) -> np.ndarray:
     a = axis.upper()
     t = np.deg2rad(angle_deg)
     c, s = np.cos(t), np.sin(t)
@@ -73,7 +70,6 @@ def rot_matrix(axis: str, angle_deg: float) -> np.ndarray:
     return np.eye(3, dtype=float)
 
 
-# ---------- Transforms ----------
 def apply_transform_xyz(
     stl_mesh: mesh.Mesh,
     ax_deg: float,
@@ -82,27 +78,21 @@ def apply_transform_xyz(
     dx: float,
     dy: float,
     dz: float,
-    pivot: str = "centroid",   # "centroid" | "origin"
+    pivot: str = "origin",   # "origin" | "centroid"
 ) -> mesh.Mesh:
-    """X→Y→Z 순서로 회전 후 평행이동. pivot 기준 회전."""
+    """X→Y→Z 순서 회전 후 평행이동. pivot 기준 회전."""
     V = stl_mesh.vectors.reshape(-1, 3)
 
-    if pivot == "centroid":
-        p = get_centroid(stl_mesh)
-    else:
-        p = np.zeros(3, dtype=float)
+    p = np.zeros(3, dtype=float) if pivot == "origin" else get_centroid(stl_mesh)
 
-    # pivot 이동 → 회전들 → 복귀
     V -= p
-    if ax_deg != 0:
-        V[:] = V @ rot_matrix("X", ax_deg).T
-    if ay_deg != 0:
-        V[:] = V @ rot_matrix("Y", ay_deg).T
-    if az_deg != 0:
-        V[:] = V @ rot_matrix("Z", az_deg).T
+    if ax_deg:
+        V[:] = V @ _rot_matrix("X", ax_deg).T
+    if ay_deg:
+        V[:] = V @ _rot_matrix("Y", ay_deg).T
+    if az_deg:
+        V[:] = V @ _rot_matrix("Z", az_deg).T
     V += p
-
-    # 평행이동
     V += np.array([dx, dy, dz], dtype=float)
 
     stl_mesh.vectors[:] = V.reshape(-1, 3, 3)
@@ -110,10 +100,7 @@ def apply_transform_xyz(
 
 
 def apply_scale_axis_uniform(stl_mesh: mesh.Mesh, axis: str, target_length: float) -> mesh.Mesh:
-    """
-    선택 축의 길이를 target_length로 맞추는 '균등 스케일'(XYZ 모두 동일비율).
-    pivot은 모델 원점(데이터 그대로) 기준.
-    """
+    """선택 축 길이를 target_length로 맞추는 균등 스케일(XYZ 동일배율, 원점 기준)."""
     idx = "XYZ".index(axis.upper())
     mins, maxs = get_bbox(stl_mesh)
     cur_len = float(maxs[idx] - mins[idx])
@@ -124,35 +111,56 @@ def apply_scale_axis_uniform(stl_mesh: mesh.Mesh, axis: str, target_length: floa
     return stl_mesh
 
 
-# ---------- Rendering ----------
-def render_mesh(stl_mesh: mesh.Mesh):
-    x, y, z = [], [], []
-    I, J, K = [], [], []
-    idx = 0
-    for tri in stl_mesh.vectors:
-        for vtx in tri:
-            x.append(vtx[0]); y.append(vtx[1]); z.append(vtx[2])
-        I.append(idx); J.append(idx + 1); K.append(idx + 2)
-        idx += 3
+# ---------- Rendering (Fast) ----------
+def render_mesh(stl_mesh: mesh.Mesh, max_tris: int | None = None):
+    """
+    고속 렌더: 완전 벡터화 + 선택적 다운샘플링.
+    max_tris: 프리뷰에 보낼 최대 삼각형 수 (None이면 전체)
+    """
+    V = stl_mesh.vectors  # (n, 3, 3)
+    n_tri = V.shape[0]
 
-    xmin, xmax = np.min(x), np.max(x)
-    ymin, ymax = np.min(y), np.max(y)
-    zmin, zmax = np.min(z), np.max(z)
+    # 다운샘플링(프리뷰 전용)
+    if (max_tris is not None) and (n_tri > max_tris) and (max_tris > 0):
+        stride = int(np.ceil(n_tri / max_tris))
+        V = V[::stride]
+        n_tri = V.shape[0]
 
+    # 좌표 벡터화
+    flat = V.reshape(-1, 3)  # (n_tri*3, 3)
+    x = flat[:, 0]
+    y = flat[:, 1]
+    z = flat[:, 2]
+
+    # 인덱스(각 삼각형의 첫 꼭짓점 기준)
+    base = np.arange(0, n_tri * 3, 3, dtype=np.int32)
+    I = base
+    J = base + 1
+    K = base + 2
+
+    # 치수 타이틀
+    mins = flat.min(axis=0)
+    maxs = flat.max(axis=0)
     title_text = (
-        f"X: {xmin:.2f} ~ {xmax:.2f} ({xmax-xmin:.2f}mm), "
-        f"Y: {ymin:.2f} ~ {ymax:.2f} ({ymax-ymin:.2f}mm), "
-        f"Z: {zmin:.2f} ~ {zmax:.2f} ({zmax-zmin:.2f}mm)"
+        f"X: {mins[0]:.2f} ~ {maxs[0]:.2f} ({maxs[0]-mins[0]:.2f}mm), "
+        f"Y: {mins[1]:.2f} ~ {maxs[1]:.2f} ({maxs[1]-mins[1]:.2f}mm), "
+        f"Z: {mins[2]:.2f} ~ {maxs[2]:.2f} ({maxs[2]-mins[2]:.2f}mm)"
     )
 
     mesh3d = go.Mesh3d(
-        x=x, y=y, z=z, i=I, j=J, k=K,
-        color="lightblue", opacity=0.5, name="STL Model"
+        x=x, y=y, z=z,
+        i=I, j=J, k=K,
+        opacity=0.5,
+        color="lightblue",
+        flatshading=True,
+        lighting=dict(ambient=0.7, diffuse=0.5, specular=0.1, roughness=1.0),
+        name="STL",
     )
     fig = go.Figure(data=[mesh3d])
     fig.update_layout(
         title=dict(text=title_text, x=0.5, xanchor="center"),
         scene=dict(aspectmode="data"),
-        margin=dict(l=0, r=0, t=60, b=0),
+        margin=dict(l=0, r=0, t=40, b=0),
+        showlegend=False,
     )
     return fig
