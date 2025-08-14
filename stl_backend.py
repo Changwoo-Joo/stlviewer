@@ -1,4 +1,3 @@
-# stl_backend.py
 import io
 import os
 import tempfile
@@ -94,11 +93,13 @@ def apply_scale_axis_uniform(stl_mesh: mesh.Mesh, axis: str, target_length: floa
     stl_mesh.vectors *= s
     return stl_mesh
 
-# ---------- Rendering (Full, Smooth) + Edge Overlay ----------
+# ---------- Rendering (Full, Smooth) ----------
 def render_mesh(stl_mesh: mesh.Mesh, height: int = 880):
     """
-    매끈한 기본 렌더(항상 Full 품질) + STL 오브젝트 윤곽선(에지) 오버레이
-    ※ 좌표계/카메라/레이아웃은 기존과 동일(변경 없음)
+    매끈한 기본 렌더(항상 Full 품질):
+    - Mesh3d만 사용(라인/에지 레이어 없음)
+    - 반투명(opacity=0.5)
+    - 🎯 그림자(조명) 효과 추가: ambient↓, diffuse/specular↑, 광원 위치 지정
     """
     V = stl_mesh.vectors  # (n, 3, 3)
     n_tri = V.shape[0]
@@ -115,45 +116,22 @@ def render_mesh(stl_mesh: mesh.Mesh, height: int = 880):
         f"Z: {mins[2]:.2f} ~ {maxs[2]:.2f} ({maxs[2]-mins[2]:.2f}mm)"
     )
 
-    # (1) 본체(면) — 기존 설정 그대로
     mesh3d = go.Mesh3d(
         x=x, y=y, z=z, i=I, j=J, k=K,
         color="lightblue",
-        opacity=0.5,            # 매끈하게 보이도록 반투명
-        flatshading=False,      # 부드러운 셰이딩
-        lighting=dict(ambient=1.0, diffuse=0.0, specular=0.0),
+        opacity=0.5,            # 그대로 유지
+        flatshading=False,      # 그대로 유지(부드러운 셰이딩)
+        # ✅ 그림자 느낌을 위한 조명값 보강
+        lighting=dict(ambient=0.55, diffuse=0.9, specular=0.25, roughness=0.7),
+        lightposition=dict(x=0.8, y=0.8, z=1.6),  # 광원 위치
         hoverinfo="skip",
         name="STL",
-        showscale=False,
     )
 
-    data = [mesh3d]
-
-    # (2) 윤곽선(에지) — STL 피사체의 삼각형 경계선을 가볍게 오버레이
-    # 각 삼각형에 대해 (v0→v1), (v1→v2), (v2→v0) 세 에지를 그리고,
-    # NaN 세그먼트로 분리하여 하나의 trace로 묶음(빠르고 깔끔)
-    e = V.reshape(-1, 3, 3)
-    edges = np.concatenate([
-        e[:, [0, 1], :], np.full((e.shape[0], 1, 3), np.nan),
-        e[:, [1, 2], :], np.full((e.shape[0], 1, 3), np.nan),
-        e[:, [2, 0], :], np.full((e.shape[0], 1, 3), np.nan),
-    ], axis=1).reshape(-1, 3)
-
-    edge_trace = go.Scatter3d(
-        x=edges[:, 0], y=edges[:, 1], z=edges[:, 2],
-        mode="lines",
-        line=dict(width=1),
-        opacity=0.22,           # 경계만 은근히 강조(너무 세면 점박이 느낌)
-        hoverinfo="skip",
-        showlegend=False,
-        name="Edges",
-    )
-    data.append(edge_trace)
-
-    fig = go.Figure(data=data)
+    fig = go.Figure(data=[mesh3d])
     fig.update_layout(
         title=dict(text=title_text, x=0.5, xanchor="center"),
-        scene=dict(aspectmode="data"),   # ← 기존 그대로 (변경 없음)
+        scene=dict(aspectmode="data"),
         margin=dict(l=0, r=0, t=36, b=0),
         showlegend=False,
         height=height,
