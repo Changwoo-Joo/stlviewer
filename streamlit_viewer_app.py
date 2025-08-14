@@ -9,21 +9,26 @@ from stl_backend import (
 st.set_page_config(page_title="STL Viewer & Transformer", layout="wide")
 st.title("STL Viewer & Transformer (Streamlit Cloud Ver.)")
 
-# ---- Global CSS: 왼쪽 패널 전용 스크롤 + 프리뷰 상호작용 차단용 래퍼 ----
+# ----------------- Global CSS -----------------
 st.markdown("""
 <style>
-.left-scroll { max-height: 88vh; overflow-y: auto; padding-right: 10px; }
-.block-container { padding-top: 0.6rem; }
+/* 두 칸 레이아웃 높이 고정 */
+.two-pane { display: flex; gap: 2rem; height: 88vh; }
 
-/* 프리뷰를 렌더는 하되 마우스 상호작용만 막기 */
+/* 왼쪽 패널: 독립 스크롤 */
+.left-scroll { height: 88vh; overflow-y: auto; padding-right: 12px; }
+
+/* 오른쪽 프리뷰: 상단 고정(스크롤해도 그대로), 상호작용 차단 래퍼 */
+.pane-right { position: sticky; top: 0; height: 88vh; overflow: hidden; }
 .no-interact .stPlotlyChart { pointer-events: none !important; }
 
-/* 제목 길 때 줄바꿈 방지 & 폰트 살짝 줄이기 */
+/* 페이지 타이틀/플롯 타이틀 잘림 방지 및 크기 조정 */
+h1, header h1 { white-space: normal !important; font-size: 1.8rem !important; line-height: 1.25 !important; }
 div.plot-container div.gtitle { white-space: nowrap !important; font-size: 14px !important; }
 </style>
 """, unsafe_allow_html=True)
 
-# ---- 세션 상태 ----
+# ----------------- Session State -----------------
 if "mesh" not in st.session_state: st.session_state.mesh = None
 if "updated" not in st.session_state: st.session_state.updated = False
 if "last_fig" not in st.session_state: st.session_state.last_fig = None
@@ -34,20 +39,23 @@ if "preview_height" not in st.session_state: st.session_state.preview_height = 8
 for k in ["abs_len_x", "abs_len_y", "abs_len_z"]:
     if k not in st.session_state: st.session_state[k] = None
 
-# ---- 좌/우 레이아웃 (왼쪽 25% / 오른쪽 75%) ----
-left, right = st.columns([0.25, 0.75], gap="large")
+# ================= Two-Pane Wrapper =================
+st.markdown('<div class="two-pane">', unsafe_allow_html=True)
+left_col, right_col = st.columns([0.28, 0.72], gap="large")
 
-with left:
+# ================= Left: Controls (scrollable) =================
+with left_col:
     st.markdown('<div class="left-scroll">', unsafe_allow_html=True)
 
     uploaded = st.file_uploader("Upload STL file", type=["stl"])
     if uploaded is not None:
-        data = uploaded.getvalue()  # ← read() 대신 getvalue() 사용
+        data = uploaded.getvalue()  # 안전하게 원본 bytes
         if data:
             st.session_state.mesh = load_stl(data)
             st.session_state.updated = True
             st.session_state.angles = {"X": 0.0, "Y": 0.0, "Z": 0.0}
             st.session_state.shift = [0.0, 0.0, 0.0]
+            # 업로드 시 축별 절대 길이 초기화
             lx, ly, lz = get_axis_lengths(st.session_state.mesh)
             st.session_state.abs_len_x = lx
             st.session_state.abs_len_y = ly
@@ -67,7 +75,7 @@ with left:
                 "Pivot(회전 기준점)", ["Model centroid", "Origin"],
                 horizontal=True, index=1, key="pivot_sel"
             )
-            # 회전 섹션 바로 아래 Apply 버튼 (회전 델타만 적용)
+            # Rotation 섹션 바로 아래 Apply 버튼 (회전 델타만 적용)
             if st.button("Apply Transform", key="apply_transform_rotation_block"):
                 dax = float(ax) - st.session_state.angles["X"]
                 day = float(ay) - st.session_state.angles["Y"]
@@ -123,12 +131,11 @@ with left:
             st.session_state.mesh = apply_scale_axis_uniform(
                 st.session_state.mesh, st.session_state.scale_axis, float(target_length)
             )
-            # 스케일 후 절대 길이 상태 갱신
             lx, ly, lz = get_axis_lengths(st.session_state.mesh)
             st.session_state.abs_len_x, st.session_state.abs_len_y, st.session_state.abs_len_z = lx, ly, lz
             st.session_state.updated = True
 
-        # 축별 절대 치수(비비례 스케일)
+        # 축별 절대 치수 (비비례 스케일)
         st.subheader("📐 Per-Axis Absolute Size (Non-uniform)")
         if st.session_state.abs_len_x is None or st.session_state.abs_len_y is None or st.session_state.abs_len_z is None:
             lx, ly, lz = get_axis_lengths(st.session_state.mesh)
@@ -167,9 +174,11 @@ with left:
             mime="application/sla",
         )
 
-    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)  # /left-scroll
 
-with right:
+# ================= Right: Preview (sticky, non-interactive) =================
+with right_col:
+    st.markdown('<div class="pane-right no-interact">', unsafe_allow_html=True)
     if st.session_state.mesh is not None:
         st.subheader("📊 Preview (Full quality)")
         fig = render_mesh(
@@ -177,15 +186,12 @@ with right:
             height=st.session_state.preview_height,
         )
         st.session_state.last_fig = fig
-
-        # ✅ 프리뷰는 렌더 유지, 상호작용만 CSS로 차단
-        st.markdown('<div class="no-interact">', unsafe_allow_html=True)
         st.plotly_chart(
             fig,
             use_container_width=True,
-            config={
-                "displaylogo": False,
-                "scrollZoom": False,
-            },
+            config={"displaylogo": False, "scrollZoom": False},
         )
-        st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ================= End wrapper =================
+st.markdown('</div>', unsafe_allow_html=True)
