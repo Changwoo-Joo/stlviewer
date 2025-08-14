@@ -77,4 +77,46 @@ with left:
         # Shift
         with st.expander("Shift (mm)", expanded=True):
             dx = st.number_input("Shift X", value=float(st.session_state.shift[0]), format="%.6f", key="sh_x")
-            dy = st.number_input("Shift Y", value=float(st.session_state.shift[1]), format="
+            dy = st.number_input("Shift Y", value=float(st.session_state.shift[1]), format="%.6f", key="sh_y")
+            dz = st.number_input("Shift Z", value=float(st.session_state.shift[2]), format="%.6f", key="sh_z")
+
+        # 메인 Apply (회전/이동 모두)
+        if st.button("Apply Transform", key="apply_transform_main"):
+            _apply_from_inputs(ax, ay, az, dx, dy, dz, pivot)
+
+        # Scale
+        st.subheader("📏 Axis-Based Scale")
+        scale_axis = st.selectbox("Scale 기준 축", ["X", "Y", "Z"], key="scale_axis")
+        curr_len = get_axis_length(st.session_state.mesh, st.session_state.scale_axis)
+        target_length = st.number_input(
+            "해당 축의 최종 길이 (mm)",
+            value=float(curr_len),
+            key=f"target_length_{st.session_state.scale_axis}",
+            format="%.6f",
+            step=1.0,
+        )
+        if st.button("Apply Axis-Based Scaling"):
+            st.session_state.mesh = apply_scale_axis_uniform(
+                st.session_state.mesh, st.session_state.scale_axis, float(target_length)
+            )
+            st.session_state.updated = True
+
+        # Download
+        st.download_button(
+            "📥 Download Transformed STL",
+            data=save_stl_bytes(st.session_state.mesh),
+            file_name="transformed.stl",
+            mime="application/sla",
+        )
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with right:
+    if st.session_state.mesh is not None:
+        st.subheader("📊 Preview (Full, orthographic fit)")
+        fig = render_mesh(
+            st.session_state.mesh,
+            height=st.session_state.preview_height,
+        )
+        st.session_state.last_fig = fig
+        st.plotly_chart(fig, use_container_width=True)
