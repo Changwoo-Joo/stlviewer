@@ -7,32 +7,21 @@ from stl_backend import (
 )
 
 st.set_page_config(page_title="STL Viewer & Transformer", layout="wide")
+
+# ---- 상단 타이틀 ----
 st.title("STL Viewer & Transformer (Streamlit Cloud Ver.)")
 
-# ===== CSS: 왼쪽(첫 번째) 컬럼 자체를 sticky + 내부 스크롤로 =====
+# ---- 전역 CSS (상단 여백/타이틀/프리뷰 타이틀 보정) ----
 st.markdown("""
 <style>
-/* 첫 번째 컬럼 컨텐츠 래퍼에 sticky + 스크롤 부여 */
-[data-testid="stHorizontalBlock"] [data-testid="column"]:first-child > div {
-    position: sticky;
-    top: 0;                               /* 화면 상단에 고정 */
-    max-height: calc(100vh - 64px);       /* 헤더/타이틀 높이만큼 보정 */
-    overflow-y: auto;                      /* 내부 스크롤 */
-    padding-right: 12px;                   /* 스크롤바 여백 */
-}
-
-/* 스크롤바 스타일(웹킷) */
-[data-testid="stHorizontalBlock"] [data-testid="column"]:first-child > div::-webkit-scrollbar { width: 8px; }
-[data-testid="stHorizontalBlock"] [data-testid="column"]:first-child > div::-webkit-scrollbar-thumb { background: #bbb; border-radius: 8px; }
-[data-testid="stHorizontalBlock"] [data-testid="column"]:first-child > div::-webkit-scrollbar-track { background: transparent; }
-/* 파이어폭스 얇은 스크롤 */
-[data-testid="stHorizontalBlock"] [data-testid="column"]:first-child > div { scrollbar-width: thin; scrollbar-color: #bbb transparent; }
-
-/* 상단 여백 조금만 남기기(원하면 조절) */
+/* 상단 여백 조금만 남기기 */
 .block-container { padding-top: 0.6rem !important; }
 
-/* Plotly 타이틀 줄바꿈 방지 */
-div.plot-container div.gtitle { white-space: nowrap !important; font-size: 14px !important; }
+/* Plotly 그래프 타이틀 줄바꿈 방지 */
+div.plot-container div.gtitle {
+    white-space: nowrap !important;
+    font-size: 14px !important;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -47,11 +36,12 @@ if "preview_height" not in st.session_state: st.session_state.preview_height = 8
 for k in ["abs_len_x", "abs_len_y", "abs_len_z"]:
     if k not in st.session_state: st.session_state[k] = None
 
-# ---- 좌/우 레이아웃 ----
-left, right = st.columns([0.25, 0.75], gap="large")
-
-with left:
-    uploaded = st.file_uploader("Upload STL file", type=["stl"])
+# ─────────────────────────────
+# 좌측: 사이드바(독립 스크롤)
+# ─────────────────────────────
+with st.sidebar:
+    st.header("Upload STL file")
+    uploaded = st.file_uploader(" ", type=["stl"], label_visibility="collapsed")
     if uploaded is not None:
         data = uploaded.getvalue()
         if data:
@@ -73,13 +63,15 @@ with left:
             ay = st.number_input("Y", value=float(st.session_state.angles["Y"]), format="%.6f", key="ang_y")
             az = st.number_input("Z", value=float(st.session_state.angles["Z"]), format="%.6f", key="ang_z")
             pivot = st.radio("Pivot(회전 기준점)", ["Model centroid", "Origin"], horizontal=True, index=1, key="pivot_sel")
+
             if st.button("Apply Transform", key="apply_transform_rotation_block"):
                 dax = float(ax) - st.session_state.angles["X"]
                 day = float(ay) - st.session_state.angles["Y"]
                 daz = float(az) - st.session_state.angles["Z"]
                 if any(abs(v) > 0 for v in [dax, day, daz]):
                     st.session_state.mesh = apply_transform_xyz(
-                        st.session_state.mesh, dax, day, daz, 0.0, 0.0, 0.0,
+                        st.session_state.mesh, dax, day, daz,
+                        0.0, 0.0, 0.0,
                         pivot=("origin" if pivot == "Origin" else "centroid"),
                     )
                     st.session_state.angles = {"X": float(ax), "Y": float(ay), "Z": float(az)}
@@ -91,7 +83,7 @@ with left:
             dy = st.number_input("Shift Y", value=float(st.session_state.shift[1]), format="%.6f", key="sh_y")
             dz = st.number_input("Shift Z", value=float(st.session_state.shift[2]), format="%.6f", key="sh_z")
 
-        # 하단 메인 Apply
+        # 하단 메인 Apply (회전/이동 모두 델타 적용)
         if st.button("Apply Transform", key="apply_transform_main"):
             dax = float(ax) - st.session_state.angles["X"]
             day = float(ay) - st.session_state.angles["Y"]
@@ -108,7 +100,7 @@ with left:
                 st.session_state.shift = [float(dx), float(dy), float(dz)]
                 st.session_state.updated = True
 
-        # Axis-Based Scale (균등)
+        # Axis-Based Scale (균등 스케일)
         st.subheader("📏 Axis-Based Scale (Uniform)")
         scale_axis = st.selectbox("Scale 기준 축", ["X", "Y", "Z"], key="scale_axis")
         curr_len = get_axis_length(st.session_state.mesh, st.session_state.scale_axis)
@@ -123,13 +115,15 @@ with left:
             st.session_state.mesh = apply_scale_axis_uniform(
                 st.session_state.mesh, st.session_state.scale_axis, float(target_length)
             )
-            st.session_state.abs_len_x, st.session_state.abs_len_y, st.session_state.abs_len_z = get_axis_lengths(st.session_state.mesh)
+            lx, ly, lz = get_axis_lengths(st.session_state.mesh)
+            st.session_state.abs_len_x, st.session_state.abs_len_y, st.session_state.abs_len_z = lx, ly, lz
             st.session_state.updated = True
 
-        # Per-Axis Absolute (비비례)
+        # 축별 절대 치수(비비례 스케일)
         st.subheader("📐 Per-Axis Absolute Size (Non-uniform)")
-        if None in (st.session_state.abs_len_x, st.session_state.abs_len_y, st.session_state.abs_len_z):
-            st.session_state.abs_len_x, st.session_state.abs_len_y, st.session_state.abs_len_z = get_axis_lengths(st.session_state.mesh)
+        if st.session_state.abs_len_x is None or st.session_state.abs_len_y is None or st.session_state.abs_len_z is None:
+            lx, ly, lz = get_axis_lengths(st.session_state.mesh)
+            st.session_state.abs_len_x, st.session_state.abs_len_y, st.session_state.abs_len_z = lx, ly, lz
 
         colx, coly, colz = st.columns(3)
         with colx:
@@ -152,7 +146,6 @@ with left:
                 st.session_state.abs_len_x, st.session_state.abs_len_y, st.session_state.abs_len_z = get_axis_lengths(st.session_state.mesh)
                 st.session_state.updated = True
 
-        # 다운로드
         st.download_button(
             "📥 Download Transformed STL",
             data=save_stl_bytes(st.session_state.mesh),
@@ -160,12 +153,21 @@ with left:
             mime="application/sla",
         )
 
-with right:
-    if st.session_state.mesh is not None:
-        st.subheader("📊 Preview (Full quality)")
-        fig = render_mesh(st.session_state.mesh, height=st.session_state.preview_height)
-        st.session_state.last_fig = fig
-        st.plotly_chart(
-            fig, use_container_width=True,
-            config={"displaylogo": False, "scrollZoom": True}
-        )
+# ─────────────────────────────
+# 우측: 프리뷰 영역(고정)
+# ─────────────────────────────
+st.subheader("📊 Preview (Full quality)")
+if st.session_state.mesh is not None:
+    fig = render_mesh(st.session_state.mesh, height=st.session_state.preview_height)
+    st.session_state.last_fig = fig
+    # 인터랙션 풀 허용(휠 줌/회전/이동 가능)
+    st.plotly_chart(
+        fig,
+        use_container_width=True,
+        config={
+            "displaylogo": False,
+            "scrollZoom": True,
+            "modeBarButtonsToAdd": ["zoom3d", "pan3d", "orbitRotation", "resetCameraDefault3d"],
+            "doubleClick": "reset",
+        },
+    )
