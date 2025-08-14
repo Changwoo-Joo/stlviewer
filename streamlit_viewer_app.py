@@ -2,7 +2,8 @@
 import streamlit as st
 from stl_backend import (
     load_stl, save_stl_bytes, render_mesh,
-    get_axis_length, apply_transform_xyz, apply_scale_axis_uniform,
+    get_axis_length, get_axis_lengths,
+    apply_transform_xyz, apply_scale_axis_uniform, apply_scale_axis_absolute,
 )
 
 st.set_page_config(page_title="STL Viewer & Transformer", layout="wide")
@@ -24,6 +25,9 @@ if "angles" not in st.session_state: st.session_state.angles = {"X": 0.0, "Y": 0
 if "shift" not in st.session_state: st.session_state.shift = [0.0, 0.0, 0.0]
 if "pivot_sel" not in st.session_state: st.session_state.pivot_sel = "Origin"  # 기본 Origin
 if "preview_height" not in st.session_state: st.session_state.preview_height = 880
+# 축별 절대 길이 입력값(초기엔 모델 길이로 채움)
+for k in ["abs_len_x", "abs_len_y", "abs_len_z"]:
+    if k not in st.session_state: st.session_state[k] = None
 
 # ---- 좌/우 레이아웃 (왼쪽 25% / 오른쪽 75%) ----
 left, right = st.columns([0.25, 0.75], gap="large")
@@ -37,6 +41,11 @@ with left:
         st.session_state.updated = True
         st.session_state.angles = {"X": 0.0, "Y": 0.0, "Z": 0.0}
         st.session_state.shift = [0.0, 0.0, 0.0]
+        # 업로드 시 축별 절대 길이 초기화
+        lx, ly, lz = get_axis_lengths(st.session_state.mesh)
+        st.session_state.abs_len_x = lx
+        st.session_state.abs_len_y = ly
+        st.session_state.abs_len_z = lz
 
     if st.session_state.mesh is not None:
         st.subheader("🌀 Transform (Rotation & Translation)")
@@ -51,7 +60,7 @@ with left:
                 horizontal=True, index=1, key="pivot_sel"
             )
 
-            # 회전 섹션 바로 아래 Apply 버튼 (회전만 델타 적용, 이동은 현재값 유지)
+            # Rotation 섹션 바로 아래 Apply 버튼 (회전만 델타 적용)
             if st.button("Apply Transform", key="apply_transform_rotation_block"):
                 dax = float(ax) - st.session_state.angles["X"]
                 day = float(ay) - st.session_state.angles["Y"]
@@ -63,7 +72,6 @@ with left:
                         dx=0.0, dy=0.0, dz=0.0,
                         pivot=("origin" if pivot == "Origin" else "centroid"),
                     )
-                    # 상태 업데이트 (회전만)
                     st.session_state.angles = {"X": float(ax), "Y": float(ay), "Z": float(az)}
                     st.session_state.updated = True
 
@@ -93,8 +101,8 @@ with left:
                 st.session_state.shift = [float(dx), float(dy), float(dz)]
                 st.session_state.updated = True
 
-        # Axis-Based Scale
-        st.subheader("📏 Axis-Based Scale")
+        # Axis-Based Scale (균등 스케일)
+        st.subheader("📏 Axis-Based Scale (Uniform)")
         scale_axis = st.selectbox("Scale 기준 축", ["X", "Y", "Z"], key="scale_axis")
         curr_len = get_axis_length(st.session_state.mesh, st.session_state.scale_axis)
         target_length = st.number_input(
@@ -105,42 +113,4 @@ with left:
             step=1.0,
         )
         if st.button("Apply Axis-Based Scaling"):
-            st.session_state.mesh = apply_scale_axis_uniform(
-                st.session_state.mesh, st.session_state.scale_axis, float(target_length)
-            )
-            st.session_state.updated = True
-
-        # 다운로드
-        st.download_button(
-            "📥 Download Transformed STL",
-            data=save_stl_bytes(st.session_state.mesh),
-            file_name="transformed.stl",
-            mime="application/sla",
-        )
-
-    st.markdown('</div>', unsafe_allow_html=True)
-
-with right:
-    if st.session_state.mesh is not None:
-        st.subheader("📊 Preview (Full quality)")
-        fig = render_mesh(
-            st.session_state.mesh,
-            height=st.session_state.preview_height,
-        )
-        st.session_state.last_fig = fig
-
-        # 🔒 프리뷰 고정: 드래그/줌 비활성화 (staticPlot)
-        st.plotly_chart(
-            fig,
-            use_container_width=True,
-            config={
-                "staticPlot": True,         # 마우스로 회전/이동/줌 불가
-                "displaylogo": False,       # 모드바 로고 숨김
-                "modeBarButtonsToRemove": [ # 혹시 나타나도 비활성
-                    "zoom", "pan", "resetCameraDefault3d",
-                    "resetCameraLastSave3d", "orbitRotation", "tableRotation",
-                    "zoom3d", "pan3d", "resetGeo", "hoverClosest3d"
-                ],
-                "scrollZoom": False,
-            },
-        )
+            st.session_state.mesh = apply_scale_axis_unifo
