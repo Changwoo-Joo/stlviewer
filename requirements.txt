@@ -1,5 +1,4 @@
-streamlit
-numpy
-matplotlib
-numpy-stl
-plotly
+streamlit>=1.36
+numpy>=1.24
+numpy-stl>=3.1.1
+plotly>=5.22
