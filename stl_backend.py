@@ -111,12 +111,12 @@ def apply_scale_axis_uniform(stl_mesh: mesh.Mesh, axis: str, target_length: floa
     return stl_mesh
 
 
-# ---------- Rendering (Fast & Solid) ----------
+# ---------- Rendering (Solid) ----------
 def render_mesh(stl_mesh: mesh.Mesh, max_tris: int | None = None, show_edges: bool = False, height: int = 880):
     """
-    고속 렌더: 완전 벡터화 + 선택적 다운샘플링.
-    - 면을 '실체'처럼 보이도록 opacity=1.0, flatshading=False, 라이팅 강화.
-    - show_edges=True일 때 윤곽선(에지) 오버레이.
+    고속 + 매끈한 면 렌더:
+    - opacity=1.0, flatshading=False → 면이 꽉 찬 실체처럼
+    - show_edges=False 기본 (윤곽선 비활성화)
     """
     V = stl_mesh.vectors  # (n, 3, 3)
     n_tri = V.shape[0]
@@ -127,21 +127,13 @@ def render_mesh(stl_mesh: mesh.Mesh, max_tris: int | None = None, show_edges: bo
         V = V[::stride]
         n_tri = V.shape[0]
 
-    # 좌표 벡터화
-    flat = V.reshape(-1, 3)  # (n_tri*3, 3)
-    x = flat[:, 0]
-    y = flat[:, 1]
-    z = flat[:, 2]
+    flat = V.reshape(-1, 3)
+    x, y, z = flat[:, 0], flat[:, 1], flat[:, 2]
 
-    # 인덱스(각 삼각형의 첫 꼭짓점 기준)
     base = np.arange(0, n_tri * 3, 3, dtype=np.int32)
-    I = base
-    J = base + 1
-    K = base + 2
+    I, J, K = base, base + 1, base + 2
 
-    # 치수 타이틀
-    mins = flat.min(axis=0)
-    maxs = flat.max(axis=0)
+    mins, maxs = flat.min(axis=0), flat.max(axis=0)
     title_text = (
         f"X: {mins[0]:.2f} ~ {maxs[0]:.2f} ({maxs[0]-mins[0]:.2f}mm), "
         f"Y: {mins[1]:.2f} ~ {maxs[1]:.2f} ({maxs[1]-mins[1]:.2f}mm), "
@@ -149,38 +141,34 @@ def render_mesh(stl_mesh: mesh.Mesh, max_tris: int | None = None, show_edges: bo
     )
 
     mesh3d = go.Mesh3d(
-        x=x, y=y, z=z,
-        i=I, j=J, k=K,
-        opacity=1.0,               # 실체감
+        x=x, y=y, z=z, i=I, j=J, k=K,
+        opacity=1.0,                # 실체감
         color="lightblue",
-        flatshading=False,         # 면 보정(하이라이트 부드럽게)
-        lighting=dict(ambient=0.85, diffuse=0.9, specular=0.1, roughness=0.9, fresnel=0.1),
-        lightposition=dict(x=0, y=0, z=1),
+        flatshading=False,          # 매끈한 면
+        lighting=dict(ambient=0.8, diffuse=0.9, specular=0.2, roughness=0.8),
+        lightposition=dict(x=0.5, y=0.5, z=1.5),
         name="STL",
+        showscale=False,
     )
 
     data = [mesh3d]
 
+    # 기본값은 False: 라인 오버레이 비활성화(점박이 현상 방지)
     if show_edges:
-        # 각 삼각형의 3개 에지를 라인으로 그린다 (간단/빠름, 중복 허용)
         e = V.reshape(-1, 3, 3)
-        # 각 tri에 대해 (v0->v1), (v1->v2), (v2->v0)
         edges = np.concatenate([
-            e[:, [0, 1], :],
-            np.full((e.shape[0], 1, 3), np.nan),
-            e[:, [1, 2], :],
-            np.full((e.shape[0], 1, 3), np.nan),
-            e[:, [2, 0], :],
-            np.full((e.shape[0], 1, 3), np.nan),
-        ], axis=1)  # (n_tri, 2+1+2+1+2+1 = 9, 3)
-        edges = edges.reshape(-1, 3)
+            e[:, [0, 1], :], np.full((e.shape[0], 1, 3), np.nan),
+            e[:, [1, 2], :], np.full((e.shape[0], 1, 3), np.nan),
+            e[:, [2, 0], :], np.full((e.shape[0], 1, 3), np.nan),
+        ], axis=1).reshape(-1, 3)
         edge_trace = go.Scatter3d(
             x=edges[:, 0], y=edges[:, 1], z=edges[:, 2],
             mode="lines",
             line=dict(width=1),
-            opacity=0.9,
-            name="Edges",
+            opacity=0.8,
+            hoverinfo="skip",
             showlegend=False,
+            name="Edges",
         )
         data.append(edge_trace)
 
@@ -188,7 +176,7 @@ def render_mesh(stl_mesh: mesh.Mesh, max_tris: int | None = None, show_edges: bo
     fig.update_layout(
         title=dict(text=title_text, x=0.5, xanchor="center"),
         scene=dict(aspectmode="data"),
-        margin=dict(l=0, r=0, t=40, b=0),
+        margin=dict(l=0, r=0, t=36, b=0),
         showlegend=False,
         height=height,
     )
