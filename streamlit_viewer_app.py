@@ -9,28 +9,30 @@ from stl_backend import (
 st.set_page_config(page_title="STL Viewer & Transformer", layout="wide")
 st.title("STL Viewer & Transformer (Streamlit Cloud Ver.)")
 
-# ---- Global CSS: 왼쪽 패널 독립 스크롤 (sticky 제거) ----
+# ===== CSS: 왼쪽(첫 번째) 컬럼 자체를 sticky + 내부 스크롤로 =====
 st.markdown("""
 <style>
-/* 왼쪽 패널: 화면 높이에 맞춰 내부 스크롤만 생성 */
-.left-scroll{
-    height: calc(100vh - 64px);  /* 헤더/타이틀 여백만큼 빼기. 필요시 56~88px 사이로 조정 */
-    overflow-y: auto;            /* 세로 스크롤 */
-    padding-right: 12px;         /* 스크롤바와 컨트롤 사이 여백 */
+/* 첫 번째 컬럼 컨텐츠 래퍼에 sticky + 스크롤 부여 */
+[data-testid="stHorizontalBlock"] [data-testid="column"]:first-child > div {
+    position: sticky;
+    top: 0;                               /* 화면 상단에 고정 */
+    max-height: calc(100vh - 64px);       /* 헤더/타이틀 높이만큼 보정 */
+    overflow-y: auto;                      /* 내부 스크롤 */
+    padding-right: 12px;                   /* 스크롤바 여백 */
 }
 
-/* 스크롤바 얇게(크롬/엣지/사파리) */
-.left-scroll::-webkit-scrollbar{ width: 8px; }
-.left-scroll::-webkit-scrollbar-thumb{ background: #bbb; border-radius: 8px; }
-.left-scroll::-webkit-scrollbar-track{ background: transparent; }
-/* 파이어폭스 */
-.left-scroll{ scrollbar-width: thin; scrollbar-color: #bbb transparent; }
+/* 스크롤바 스타일(웹킷) */
+[data-testid="stHorizontalBlock"] [data-testid="column"]:first-child > div::-webkit-scrollbar { width: 8px; }
+[data-testid="stHorizontalBlock"] [data-testid="column"]:first-child > div::-webkit-scrollbar-thumb { background: #bbb; border-radius: 8px; }
+[data-testid="stHorizontalBlock"] [data-testid="column"]:first-child > div::-webkit-scrollbar-track { background: transparent; }
+/* 파이어폭스 얇은 스크롤 */
+[data-testid="stHorizontalBlock"] [data-testid="column"]:first-child > div { scrollbar-width: thin; scrollbar-color: #bbb transparent; }
 
-/* 페이지 상단 여백 조금만 남기기 */
-.block-container{ padding-top: 0.6rem !important; }
+/* 상단 여백 조금만 남기기(원하면 조절) */
+.block-container { padding-top: 0.6rem !important; }
 
-/* 프리뷰 타이틀 줄바꿈 방지 */
-div.plot-container div.gtitle{ white-space: nowrap !important; font-size: 14px !important; }
+/* Plotly 타이틀 줄바꿈 방지 */
+div.plot-container div.gtitle { white-space: nowrap !important; font-size: 14px !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -49,9 +51,6 @@ for k in ["abs_len_x", "abs_len_y", "abs_len_z"]:
 left, right = st.columns([0.25, 0.75], gap="large")
 
 with left:
-    # 이 div 안에서만 스크롤이 생깁니다.
-    st.markdown('<div class="left-scroll">', unsafe_allow_html=True)
-
     uploaded = st.file_uploader("Upload STL file", type=["stl"])
     if uploaded is not None:
         data = uploaded.getvalue()
@@ -121,7 +120,9 @@ with left:
             step=1.0,
         )
         if st.button("Apply Axis-Based Scaling"):
-            st.session_state.mesh = apply_scale_axis_uniform(st.session_state.mesh, st.session_state.scale_axis, float(target_length))
+            st.session_state.mesh = apply_scale_axis_uniform(
+                st.session_state.mesh, st.session_state.scale_axis, float(target_length)
+            )
             st.session_state.abs_len_x, st.session_state.abs_len_y, st.session_state.abs_len_z = get_axis_lengths(st.session_state.mesh)
             st.session_state.updated = True
 
@@ -159,11 +160,12 @@ with left:
             mime="application/sla",
         )
 
-    st.markdown('</div>', unsafe_allow_html=True)
-
 with right:
     if st.session_state.mesh is not None:
         st.subheader("📊 Preview (Full quality)")
         fig = render_mesh(st.session_state.mesh, height=st.session_state.preview_height)
         st.session_state.last_fig = fig
-        st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False, "scrollZoom": True})
+        st.plotly_chart(
+            fig, use_container_width=True,
+            config={"displaylogo": False, "scrollZoom": True}
+        )
