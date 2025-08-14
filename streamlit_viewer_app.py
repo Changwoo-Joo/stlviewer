@@ -25,7 +25,7 @@ if "angles" not in st.session_state: st.session_state.angles = {"X": 0.0, "Y": 0
 if "shift" not in st.session_state: st.session_state.shift = [0.0, 0.0, 0.0]
 if "pivot_sel" not in st.session_state: st.session_state.pivot_sel = "Origin"  # 기본 Origin
 if "preview_height" not in st.session_state: st.session_state.preview_height = 880
-# 축별 절대 길이 입력값(초기엔 모델 길이로 채움)
+# 축별 절대 길이 입력값
 for k in ["abs_len_x", "abs_len_y", "abs_len_z"]:
     if k not in st.session_state: st.session_state[k] = None
 
@@ -37,15 +37,20 @@ with left:
 
     uploaded = st.file_uploader("Upload STL file", type=["stl"])
     if uploaded is not None:
-        st.session_state.mesh = load_stl(uploaded.read())
-        st.session_state.updated = True
-        st.session_state.angles = {"X": 0.0, "Y": 0.0, "Z": 0.0}
-        st.session_state.shift = [0.0, 0.0, 0.0]
-        # 업로드 시 축별 절대 길이 초기화
-        lx, ly, lz = get_axis_lengths(st.session_state.mesh)
-        st.session_state.abs_len_x = lx
-        st.session_state.abs_len_y = ly
-        st.session_state.abs_len_z = lz
+        # ✅ getvalue()로 항상 안전하게 바이트 획득
+        data = uploaded.getvalue()
+        if data:
+            st.session_state.mesh = load_stl(data)
+            st.session_state.updated = True
+            st.session_state.angles = {"X": 0.0, "Y": 0.0, "Z": 0.0}
+            st.session_state.shift = [0.0, 0.0, 0.0]
+            # 업로드 시 축별 절대 길이 초기화
+            lx, ly, lz = get_axis_lengths(st.session_state.mesh)
+            st.session_state.abs_len_x = lx
+            st.session_state.abs_len_y = ly
+            st.session_state.abs_len_z = lz
+        else:
+            st.error("업로드된 파일을 읽지 못했습니다. 파일을 다시 선택해주세요.")
 
     if st.session_state.mesh is not None:
         st.subheader("🌀 Transform (Rotation & Translation)")
@@ -123,7 +128,6 @@ with left:
 
         # 축별 절대 치수(비비례 스케일)
         st.subheader("📐 Per-Axis Absolute Size (Non-uniform)")
-        # 초기값 없으면 현재 모델 길이로 채움
         if st.session_state.abs_len_x is None or st.session_state.abs_len_y is None or st.session_state.abs_len_z is None:
             lx, ly, lz = get_axis_lengths(st.session_state.mesh)
             st.session_state.abs_len_x, st.session_state.abs_len_y, st.session_state.abs_len_z = lx, ly, lz
@@ -137,7 +141,6 @@ with left:
             abs_z = st.number_input("Z 길이 (mm)", value=float(st.session_state.abs_len_z), key="abs_z", format="%.6f")
 
         if st.button("Apply Per-Axis Absolute Scaling"):
-            # 현재 길이와 비교해 달라진 축만 개별 스케일 (순차 적용)
             changed = False
             cur_x, cur_y, cur_z = get_axis_lengths(st.session_state.mesh)
             if abs(abs_x - cur_x) > 1e-9:
@@ -151,7 +154,6 @@ with left:
                 changed = True
 
             if changed:
-                # 상태값 갱신
                 st.session_state.abs_len_x, st.session_state.abs_len_y, st.session_state.abs_len_z = get_axis_lengths(st.session_state.mesh)
                 st.session_state.updated = True
 
@@ -174,12 +176,12 @@ with right:
         )
         st.session_state.last_fig = fig
 
-        # 🔒 프리뷰 고정: 드래그/줌 비활성화 (왼쪽만 스크롤)
+        # 🔒 프리뷰 고정: 드래그/줌 비활성화
         st.plotly_chart(
             fig,
             use_container_width=True,
             config={
-                "staticPlot": True,         # 마우스로 회전/이동/줌 불가
+                "staticPlot": True,   # 오른쪽 프리뷰는 마우스로 안 움직임
                 "displaylogo": False,
                 "scrollZoom": False,
             },
