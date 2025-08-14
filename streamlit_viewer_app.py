@@ -51,15 +51,38 @@ with left:
                 horizontal=True, index=1, key="pivot_sel"
             )
 
+            # 🔹 Rotation 섹션 바로 아래 Apply 버튼 (요청사항)
+            if st.button("Apply Transform", key="apply_transform_rotation_block"):
+                # 회전값은 입력값 사용, 이동은 현재 상태값을 사용
+                dax = float(ax) - st.session_state.angles["X"]
+                day = float(ay) - st.session_state.angles["Y"]
+                daz = float(az) - st.session_state.angles["Z"]
+                ddx = 0.0
+                ddy = 0.0
+                ddz = 0.0
+                # 이동은 현 상태값 적용(절대값 유지)
+                cur_dx, cur_dy, cur_dz = st.session_state.shift
+
+                if any(abs(v) > 0 for v in [dax, day, daz]):
+                    st.session_state.mesh = apply_transform_xyz(
+                        st.session_state.mesh,
+                        ax_deg=dax, ay_deg=day, az_deg=daz,
+                        dx=ddx, dy=ddy, dz=ddz,
+                        pivot=("origin" if pivot == "Origin" else "centroid"),
+                    )
+                    # 상태 업데이트: 회전 각도만 갱신, shift는 유지
+                    st.session_state.angles = {"X": float(ax), "Y": float(ay), "Z": float(az)}
+                    st.session_state.shift = [float(cur_dx), float(cur_dy), float(cur_dz)]
+                    st.session_state.updated = True
+
         # 평행이동
         with st.expander("Shift (mm)", expanded=True):
             dx = st.number_input("Shift X", value=float(st.session_state.shift[0]), format="%.6f", key="sh_x")
             dy = st.number_input("Shift Y", value=float(st.session_state.shift[1]), format="%.6f", key="sh_y")
             dz = st.number_input("Shift Z", value=float(st.session_state.shift[2]), format="%.6f", key="sh_z")
 
-        # 적용 버튼
-        if st.button("Apply Transform"):
-            # 절대값 UI → 델타만 적용
+        # 🔹 기존 메인 Apply 버튼 (회전/이동 모두 델타 적용)
+        if st.button("Apply Transform", key="apply_transform_main"):
             dax = float(ax) - st.session_state.angles["X"]
             day = float(ay) - st.session_state.angles["Y"]
             daz = float(az) - st.session_state.angles["Z"]
