@@ -1,3 +1,4 @@
+# stl_backend.py
 import io
 import os
 import tempfile
@@ -99,7 +100,7 @@ def render_mesh(stl_mesh: mesh.Mesh, height: int = 880):
     매끈한 기본 렌더(항상 Full 품질):
     - Mesh3d만 사용(라인/에지 레이어 없음)
     - 반투명(opacity=0.5)
-    - 🎯 그림자(조명) 효과 추가: ambient↓, diffuse/specular↑, 광원 위치 지정
+    - 그림자(조명) 효과 추가
     """
     V = stl_mesh.vectors  # (n, 3, 3)
     n_tri = V.shape[0]
@@ -119,11 +120,10 @@ def render_mesh(stl_mesh: mesh.Mesh, height: int = 880):
     mesh3d = go.Mesh3d(
         x=x, y=y, z=z, i=I, j=J, k=K,
         color="lightblue",
-        opacity=0.5,            # 그대로 유지
-        flatshading=False,      # 그대로 유지(부드러운 셰이딩)
-        # ✅ 그림자 느낌을 위한 조명값 보강
+        opacity=0.5,            # 시각적으로 매끈
+        flatshading=False,      # 부드러운 셰이딩
         lighting=dict(ambient=0.55, diffuse=0.9, specular=0.25, roughness=0.7),
-        lightposition=dict(x=0.8, y=0.8, z=1.6),  # 광원 위치
+        lightposition=dict(x=0.8, y=0.8, z=1.6),
         hoverinfo="skip",
         name="STL",
     )
