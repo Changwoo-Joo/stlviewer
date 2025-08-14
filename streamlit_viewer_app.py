@@ -43,10 +43,8 @@ if st.session_state.mesh is not None:
 
     with rot_col1:
         axis = st.selectbox("Rotation Axis", ["X", "Y", "Z"], key="rot_axis")
-        # 표시값(현재 축의 누적 회전각)
         current_display_angle = st.session_state.display_angles.get(axis, 0.0)
 
-        # 표시용 입력: 목표 절대값을 입력받고, 기존 표시값과의 차이만큼만 실제 적용
         angle = st.number_input(
             "Rotation Angle (degrees)",
             value=float(current_display_angle),
@@ -74,7 +72,6 @@ if st.session_state.mesh is not None:
         )
 
         if st.button("Apply Transform"):
-            # 이전 표시값과의 차이를 적용(절대 목표 → 델타로 변환)
             delta_angle = float(angle) - st.session_state.display_angles[axis]
             delta_dx = float(dx) - st.session_state.display_shift[0]
             delta_dy = float(dy) - st.session_state.display_shift[1]
@@ -84,7 +81,6 @@ if st.session_state.mesh is not None:
                 st.session_state.mesh = apply_transform(
                     st.session_state.mesh, axis, delta_angle, delta_dx, delta_dy, delta_dz
                 )
-                # 표시값 갱신
                 st.session_state.display_angles[axis] = float(angle)
                 st.session_state.display_shift = [float(dx), float(dy), float(dz)]
                 st.session_state.updated = True
@@ -95,7 +91,6 @@ if st.session_state.mesh is not None:
             "Shift-like Snap (회전 90°, 이동 Large step)", value=False
         )
 
-        # 스냅 off: 작은 스텝 / on: 큰 스텝
         rot_small, rot_large = 10.0, 90.0
         move_small, move_large = 5.0, 50.0
         rot_step = rot_large if snap_mode else rot_small
@@ -103,7 +98,6 @@ if st.session_state.mesh is not None:
 
         qc1, qc2, qc3 = st.columns(3)
 
-        # ---- Rotate Controls ----
         with qc1:
             st.write("↻ Rotate")
             c = st.columns(2)
@@ -120,7 +114,6 @@ if st.session_state.mesh is not None:
                 st.session_state.display_angles[axis] += rot_step
                 st.session_state.updated = True
 
-        # ---- Move X/Y Controls ----
         with qc2:
             st.write("⇄ Move X / Y")
             r1 = st.columns(2)
@@ -151,7 +144,6 @@ if st.session_state.mesh is not None:
                 st.session_state.display_shift[1] += move_step
                 st.session_state.updated = True
 
-        # ---- Move Z Controls ----
         with qc3:
             st.write("⇅ Move Z")
             r3 = st.columns(2)
@@ -172,11 +164,10 @@ if st.session_state.mesh is not None:
     st.subheader("📏 Axis-Based Scale")
     scale_axis = st.selectbox("Scale 기준 축", ["X", "Y", "Z"], key="scale_axis")
 
-    # 선택된 축의 현재 길이를 기본값으로 자동 기입
     if st.session_state.mesh is not None:
         curr_len = get_axis_length(st.session_state.mesh, st.session_state.scale_axis)
     else:
-        curr_len = 100.0  # fallback
+        curr_len = 100.0
 
     target_length = st.number_input(
         "해당 축의 최종 길이 (mm)",
