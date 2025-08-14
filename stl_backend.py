@@ -6,6 +6,26 @@ import numpy as np
 from stl import mesh
 import plotly.graph_objects as go
 
+
+# ---------- (공유) Preview Store ----------
+def get_preview_store():
+    """세션 간(탭 간) 공유되는 간단한 바이트 저장소(dict)."""
+    import streamlit as st
+
+    @st.cache_resource
+    def _store():
+        return {}  # {token: bytes}
+    return _store()
+
+def put_preview_bytes(token: str, stl_mesh: mesh.Mesh) -> None:
+    store = get_preview_store()
+    store[token] = save_stl_bytes(stl_mesh).getvalue()
+
+def get_preview_bytes(token: str) -> bytes | None:
+    store = get_preview_store()
+    return store.get(token)
+
+
 # ---------- STL I/O ----------
 def load_stl(file_bytes: bytes) -> mesh.Mesh:
     with tempfile.NamedTemporaryFile(delete=False, suffix=".stl") as tmp:
@@ -35,6 +55,7 @@ def save_stl_bytes(stl_mesh: mesh.Mesh) -> io.BytesIO:
             pass
     return io.BytesIO(data)
 
+
 # ---------- Geometry ----------
 def get_bbox(stl_mesh: mesh.Mesh):
     v = stl_mesh.vectors  # (n_tri, 3, 3)
@@ -48,13 +69,13 @@ def get_axis_length(stl_mesh: mesh.Mesh, axis: str) -> float:
     return float(maxs[idx] - mins[idx])
 
 def get_axis_lengths(stl_mesh: mesh.Mesh):
-    """현재 X/Y/Z 각 축 길이를 튜플로 반환 (lenX, lenY, lenZ)."""
     mins, maxs = get_bbox(stl_mesh)
     lengths = maxs - mins
     return float(lengths[0]), float(lengths[1]), float(lengths[2])
 
 def get_centroid(stl_mesh: mesh.Mesh) -> np.ndarray:
     return np.mean(stl_mesh.vectors.reshape(-1, 3), axis=0)
+
 
 # ---------- Transforms ----------
 def _rot_matrix(axis: str, angle_deg: float) -> np.ndarray:
@@ -75,7 +96,6 @@ def apply_transform_xyz(
     dx: float, dy: float, dz: float,
     pivot: str = "origin",   # "origin" | "centroid"
 ) -> mesh.Mesh:
-    """X→Y→Z 순으로 회전 후 평행이동. pivot 기준 회전."""
     V = stl_mesh.vectors.reshape(-1, 3)
     p = np.zeros(3, dtype=float) if pivot == "origin" else get_centroid(stl_mesh)
 
@@ -90,7 +110,6 @@ def apply_transform_xyz(
     return stl_mesh
 
 def apply_scale_axis_uniform(stl_mesh: mesh.Mesh, axis: str, target_length: float) -> mesh.Mesh:
-    """선택 축 길이를 target_length로 맞추는 '균등 스케일'(XYZ 동일 배율, 원점 기준)."""
     idx = "XYZ".index(axis.upper())
     mins, maxs = get_bbox(stl_mesh)
     cur_len = float(maxs[idx] - mins[idx])
@@ -101,28 +120,24 @@ def apply_scale_axis_uniform(stl_mesh: mesh.Mesh, axis: str, target_length: floa
     return stl_mesh
 
 def apply_scale_axis_absolute(stl_mesh: mesh.Mesh, axis: str, target_length: float) -> mesh.Mesh:
-    """해당 '한 축만' 목표 길이에 맞추는 '비비례 스케일'(Non-uniform).
-    예: X축만 늘이거나 줄임 (Y,Z 그대로)
-    """
     axis = axis.upper()
     idx = "XYZ".index(axis)
     mins, maxs = get_bbox(stl_mesh)
     cur_len = float(maxs[idx] - mins[idx])
     if cur_len == 0:
-        return stl_mesh  # 스케일 불가
+        return stl_mesh
     s = float(target_length) / cur_len
-    # 해당 축 좌표만 스케일
     stl_mesh.vectors[:, :, idx] *= s
     return stl_mesh
 
-# ---------- Rendering (Full, Smooth) ----------
+
+# ---------- Rendering ----------
 def render_mesh(stl_mesh: mesh.Mesh, height: int = 880):
     """
-    매끈한 기본 렌더(항상 Full 품질):
-    - Mesh3d만 사용(라인/에지 레이어 없음)
-    - 반투명(opacity=0.5) + 조명 추가(입체감)
+    Full 품질, 부드러운 셰이딩 + 은은한 조명.
+    (좌표/카메라 변경 없음)
     """
-    V = stl_mesh.vectors  # (n, 3, 3)
+    V = stl_mesh.vectors
     n_tri = V.shape[0]
 
     flat = V.reshape(-1, 3)
@@ -140,8 +155,8 @@ def render_mesh(stl_mesh: mesh.Mesh, height: int = 880):
     mesh3d = go.Mesh3d(
         x=x, y=y, z=z, i=I, j=J, k=K,
         color="lightblue",
-        opacity=0.5,            # 시각적으로 매끈
-        flatshading=False,      # 부드러운 셰이딩
+        opacity=0.5,
+        flatshading=False,
         lighting=dict(ambient=0.55, diffuse=0.9, specular=0.25, roughness=0.7),
         lightposition=dict(x=0.8, y=0.8, z=1.6),
         hoverinfo="skip",
