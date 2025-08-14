@@ -113,4 +113,74 @@ with left:
             step=1.0,
         )
         if st.button("Apply Axis-Based Scaling"):
-            st.session_state.mesh = apply_scale_axis_unifo
+            st.session_state.mesh = apply_scale_axis_uniform(
+                st.session_state.mesh, st.session_state.scale_axis, float(target_length)
+            )
+            # 스케일 후 절대 길이 상태도 갱신
+            lx, ly, lz = get_axis_lengths(st.session_state.mesh)
+            st.session_state.abs_len_x, st.session_state.abs_len_y, st.session_state.abs_len_z = lx, ly, lz
+            st.session_state.updated = True
+
+        # 축별 절대 치수(비비례 스케일)
+        st.subheader("📐 Per-Axis Absolute Size (Non-uniform)")
+        # 초기값 없으면 현재 모델 길이로 채움
+        if st.session_state.abs_len_x is None or st.session_state.abs_len_y is None or st.session_state.abs_len_z is None:
+            lx, ly, lz = get_axis_lengths(st.session_state.mesh)
+            st.session_state.abs_len_x, st.session_state.abs_len_y, st.session_state.abs_len_z = lx, ly, lz
+
+        colx, coly, colz = st.columns(3)
+        with colx:
+            abs_x = st.number_input("X 길이 (mm)", value=float(st.session_state.abs_len_x), key="abs_x", format="%.6f")
+        with coly:
+            abs_y = st.number_input("Y 길이 (mm)", value=float(st.session_state.abs_len_y), key="abs_y", format="%.6f")
+        with colz:
+            abs_z = st.number_input("Z 길이 (mm)", value=float(st.session_state.abs_len_z), key="abs_z", format="%.6f")
+
+        if st.button("Apply Per-Axis Absolute Scaling"):
+            # 현재 길이와 비교해 달라진 축만 개별 스케일 (순차 적용)
+            changed = False
+            cur_x, cur_y, cur_z = get_axis_lengths(st.session_state.mesh)
+            if abs(abs_x - cur_x) > 1e-9:
+                st.session_state.mesh = apply_scale_axis_absolute(st.session_state.mesh, "X", float(abs_x))
+                changed = True
+            if abs(abs_y - cur_y) > 1e-9:
+                st.session_state.mesh = apply_scale_axis_absolute(st.session_state.mesh, "Y", float(abs_y))
+                changed = True
+            if abs(abs_z - cur_z) > 1e-9:
+                st.session_state.mesh = apply_scale_axis_absolute(st.session_state.mesh, "Z", float(abs_z))
+                changed = True
+
+            if changed:
+                # 상태값 갱신
+                st.session_state.abs_len_x, st.session_state.abs_len_y, st.session_state.abs_len_z = get_axis_lengths(st.session_state.mesh)
+                st.session_state.updated = True
+
+        # 다운로드
+        st.download_button(
+            "📥 Download Transformed STL",
+            data=save_stl_bytes(st.session_state.mesh),
+            file_name="transformed.stl",
+            mime="application/sla",
+        )
+
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with right:
+    if st.session_state.mesh is not None:
+        st.subheader("📊 Preview (Full quality)")
+        fig = render_mesh(
+            st.session_state.mesh,
+            height=st.session_state.preview_height,
+        )
+        st.session_state.last_fig = fig
+
+        # 🔒 프리뷰 고정: 드래그/줌 비활성화 (왼쪽만 스크롤)
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            config={
+                "staticPlot": True,         # 마우스로 회전/이동/줌 불가
+                "displaylogo": False,
+                "scrollZoom": False,
+            },
+        )
