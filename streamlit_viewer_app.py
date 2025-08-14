@@ -25,25 +25,6 @@ if "shift" not in st.session_state: st.session_state.shift = [0.0, 0.0, 0.0]
 if "pivot_sel" not in st.session_state: st.session_state.pivot_sel = "Origin"  # 기본 Origin
 if "preview_height" not in st.session_state: st.session_state.preview_height = 880
 
-# ---- 헬퍼: 입력값 델타 적용 ----
-def _apply_from_inputs(ax, ay, az, dx, dy, dz, pivot_label: str):
-    dax = float(ax) - st.session_state.angles["X"]
-    day = float(ay) - st.session_state.angles["Y"]
-    daz = float(az) - st.session_state.angles["Z"]
-    ddx = float(dx) - st.session_state.shift[0]
-    ddy = float(dy) - st.session_state.shift[1]
-    ddz = float(dz) - st.session_state.shift[2]
-    if any(abs(v) > 0 for v in [dax, day, daz, ddx, ddy, ddz]):
-        st.session_state.mesh = apply_transform_xyz(
-            st.session_state.mesh,
-            ax_deg=dax, ay_deg=day, az_deg=daz,
-            dx=ddx, dy=ddy, dz=ddz,
-            pivot=("origin" if pivot_label == "Origin" else "centroid"),
-        )
-        st.session_state.angles = {"X": float(ax), "Y": float(ay), "Z": float(az)}
-        st.session_state.shift = [float(dx), float(dy), float(dz)]
-        st.session_state.updated = True
-
 # ---- 좌/우 레이아웃 (왼쪽 25% / 오른쪽 75%) ----
 left, right = st.columns([0.25, 0.75], gap="large")
 
@@ -70,19 +51,32 @@ with left:
                 horizontal=True, index=1, key="pivot_sel"
             )
 
-            # 🔹 Rotation 블록 바로 아래 Apply 버튼 (요청사항)
-            if st.button("Apply Transform", key="apply_transform_rotation_block"):
-                _apply_from_inputs(ax, ay, az, st.session_state.shift[0], st.session_state.shift[1], st.session_state.shift[2], pivot)
-
         # 평행이동
         with st.expander("Shift (mm)", expanded=True):
             dx = st.number_input("Shift X", value=float(st.session_state.shift[0]), format="%.6f", key="sh_x")
             dy = st.number_input("Shift Y", value=float(st.session_state.shift[1]), format="%.6f", key="sh_y")
             dz = st.number_input("Shift Z", value=float(st.session_state.shift[2]), format="%.6f", key="sh_z")
 
-        # 🔹 기존의 Apply 버튼 (회전/이동 모두 고려)
-        if st.button("Apply Transform", key="apply_transform_main"):
-            _apply_from_inputs(ax, ay, az, dx, dy, dz, pivot)
+        # 적용 버튼
+        if st.button("Apply Transform"):
+            # 절대값 UI → 델타만 적용
+            dax = float(ax) - st.session_state.angles["X"]
+            day = float(ay) - st.session_state.angles["Y"]
+            daz = float(az) - st.session_state.angles["Z"]
+            ddx = float(dx) - st.session_state.shift[0]
+            ddy = float(dy) - st.session_state.shift[1]
+            ddz = float(dz) - st.session_state.shift[2]
+
+            if any(abs(v) > 0 for v in [dax, day, daz, ddx, ddy, ddz]):
+                st.session_state.mesh = apply_transform_xyz(
+                    st.session_state.mesh,
+                    ax_deg=dax, ay_deg=day, az_deg=daz,
+                    dx=ddx, dy=ddy, dz=ddz,
+                    pivot=("origin" if pivot == "Origin" else "centroid"),
+                )
+                st.session_state.angles = {"X": float(ax), "Y": float(ay), "Z": float(az)}
+                st.session_state.shift = [float(dx), float(dy), float(dz)]
+                st.session_state.updated = True
 
         # Axis-Based Scale
         st.subheader("📏 Axis-Based Scale")
@@ -114,7 +108,7 @@ with left:
 with right:
     if st.session_state.mesh is not None:
         st.subheader("📊 Preview (Full quality)")
-        # 항상 Full 품질로 렌더 + 경계 강조
+        # 항상 Full 품질로 렌더
         fig = render_mesh(
             st.session_state.mesh,
             height=st.session_state.preview_height,
