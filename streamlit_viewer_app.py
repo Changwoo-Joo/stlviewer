@@ -9,11 +9,17 @@ from stl_backend import (
 st.set_page_config(page_title="STL Viewer & Transformer", layout="wide")
 st.title("STL Viewer & Transformer (Streamlit Cloud Ver.)")
 
-# ---- Global CSS: 왼쪽 패널 전용 스크롤 ----
+# ---- Global CSS: 왼쪽 패널 전용 스크롤 + 프리뷰 상호작용 차단용 래퍼 ----
 st.markdown("""
 <style>
 .left-scroll { max-height: 88vh; overflow-y: auto; padding-right: 10px; }
 .block-container { padding-top: 0.6rem; }
+
+/* 프리뷰를 렌더는 하되 마우스 상호작용만 막기 */
+.no-interact .stPlotlyChart { pointer-events: none !important; }
+
+/* 제목 길 때 줄바꿈 방지 & 폰트 살짝 줄이기 */
+div.plot-container div.gtitle { white-space: nowrap !important; font-size: 14px !important; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -25,7 +31,6 @@ if "angles" not in st.session_state: st.session_state.angles = {"X": 0.0, "Y": 0
 if "shift" not in st.session_state: st.session_state.shift = [0.0, 0.0, 0.0]
 if "pivot_sel" not in st.session_state: st.session_state.pivot_sel = "Origin"  # 기본 Origin
 if "preview_height" not in st.session_state: st.session_state.preview_height = 880
-# 축별 절대 길이 입력값
 for k in ["abs_len_x", "abs_len_y", "abs_len_z"]:
     if k not in st.session_state: st.session_state[k] = None
 
@@ -37,14 +42,12 @@ with left:
 
     uploaded = st.file_uploader("Upload STL file", type=["stl"])
     if uploaded is not None:
-        # ✅ getvalue()로 항상 안전하게 바이트 획득
-        data = uploaded.getvalue()
+        data = uploaded.getvalue()  # ← read() 대신 getvalue() 사용
         if data:
             st.session_state.mesh = load_stl(data)
             st.session_state.updated = True
             st.session_state.angles = {"X": 0.0, "Y": 0.0, "Z": 0.0}
             st.session_state.shift = [0.0, 0.0, 0.0]
-            # 업로드 시 축별 절대 길이 초기화
             lx, ly, lz = get_axis_lengths(st.session_state.mesh)
             st.session_state.abs_len_x = lx
             st.session_state.abs_len_y = ly
@@ -64,8 +67,7 @@ with left:
                 "Pivot(회전 기준점)", ["Model centroid", "Origin"],
                 horizontal=True, index=1, key="pivot_sel"
             )
-
-            # Rotation 섹션 바로 아래 Apply 버튼 (회전만 델타 적용)
+            # 회전 섹션 바로 아래 Apply 버튼 (회전 델타만 적용)
             if st.button("Apply Transform", key="apply_transform_rotation_block"):
                 dax = float(ax) - st.session_state.angles["X"]
                 day = float(ay) - st.session_state.angles["Y"]
@@ -121,7 +123,7 @@ with left:
             st.session_state.mesh = apply_scale_axis_uniform(
                 st.session_state.mesh, st.session_state.scale_axis, float(target_length)
             )
-            # 스케일 후 절대 길이 상태도 갱신
+            # 스케일 후 절대 길이 상태 갱신
             lx, ly, lz = get_axis_lengths(st.session_state.mesh)
             st.session_state.abs_len_x, st.session_state.abs_len_y, st.session_state.abs_len_z = lx, ly, lz
             st.session_state.updated = True
@@ -176,13 +178,14 @@ with right:
         )
         st.session_state.last_fig = fig
 
-        # 🔒 프리뷰 고정: 드래그/줌 비활성화
+        # ✅ 프리뷰는 렌더 유지, 상호작용만 CSS로 차단
+        st.markdown('<div class="no-interact">', unsafe_allow_html=True)
         st.plotly_chart(
             fig,
             use_container_width=True,
             config={
-                "staticPlot": True,   # 오른쪽 프리뷰는 마우스로 안 움직임
                 "displaylogo": False,
                 "scrollZoom": False,
             },
         )
+        st.markdown('</div>', unsafe_allow_html=True)
