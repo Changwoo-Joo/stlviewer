@@ -41,7 +41,7 @@ with left:
     if st.session_state.mesh is not None:
         st.subheader("🌀 Transform (Rotation & Translation)")
 
-        # 회전(디자인툴처럼 X/Y/Z 각도 입력)
+        # Rotation
         with st.expander("Rotation (degrees)", expanded=True):
             ax = st.number_input("X", value=float(st.session_state.angles["X"]), format="%.6f", key="ang_x")
             ay = st.number_input("Y", value=float(st.session_state.angles["Y"]), format="%.6f", key="ang_y")
@@ -51,37 +51,29 @@ with left:
                 horizontal=True, index=1, key="pivot_sel"
             )
 
-            # 🔹 Rotation 섹션 바로 아래 Apply 버튼 (요청사항)
+            # 회전 섹션 바로 아래 Apply 버튼 (회전만 델타 적용, 이동은 현재값 유지)
             if st.button("Apply Transform", key="apply_transform_rotation_block"):
-                # 회전값은 입력값 사용, 이동은 현재 상태값을 사용
                 dax = float(ax) - st.session_state.angles["X"]
                 day = float(ay) - st.session_state.angles["Y"]
                 daz = float(az) - st.session_state.angles["Z"]
-                ddx = 0.0
-                ddy = 0.0
-                ddz = 0.0
-                # 이동은 현 상태값 적용(절대값 유지)
-                cur_dx, cur_dy, cur_dz = st.session_state.shift
-
                 if any(abs(v) > 0 for v in [dax, day, daz]):
                     st.session_state.mesh = apply_transform_xyz(
                         st.session_state.mesh,
                         ax_deg=dax, ay_deg=day, az_deg=daz,
-                        dx=ddx, dy=ddy, dz=ddz,
+                        dx=0.0, dy=0.0, dz=0.0,
                         pivot=("origin" if pivot == "Origin" else "centroid"),
                     )
-                    # 상태 업데이트: 회전 각도만 갱신, shift는 유지
+                    # 상태 업데이트 (회전만)
                     st.session_state.angles = {"X": float(ax), "Y": float(ay), "Z": float(az)}
-                    st.session_state.shift = [float(cur_dx), float(cur_dy), float(cur_dz)]
                     st.session_state.updated = True
 
-        # 평행이동
+        # Shift
         with st.expander("Shift (mm)", expanded=True):
             dx = st.number_input("Shift X", value=float(st.session_state.shift[0]), format="%.6f", key="sh_x")
             dy = st.number_input("Shift Y", value=float(st.session_state.shift[1]), format="%.6f", key="sh_y")
             dz = st.number_input("Shift Z", value=float(st.session_state.shift[2]), format="%.6f", key="sh_z")
 
-        # 🔹 기존 메인 Apply 버튼 (회전/이동 모두 델타 적용)
+        # 하단 메인 Apply (회전/이동 모두 델타 적용)
         if st.button("Apply Transform", key="apply_transform_main"):
             dax = float(ax) - st.session_state.angles["X"]
             day = float(ay) - st.session_state.angles["Y"]
@@ -131,10 +123,24 @@ with left:
 with right:
     if st.session_state.mesh is not None:
         st.subheader("📊 Preview (Full quality)")
-        # 항상 Full 품질로 렌더
         fig = render_mesh(
             st.session_state.mesh,
             height=st.session_state.preview_height,
         )
         st.session_state.last_fig = fig
-        st.plotly_chart(fig, use_container_width=True)
+
+        # 🔒 프리뷰 고정: 드래그/줌 비활성화 (staticPlot)
+        st.plotly_chart(
+            fig,
+            use_container_width=True,
+            config={
+                "staticPlot": True,         # 마우스로 회전/이동/줌 불가
+                "displaylogo": False,       # 모드바 로고 숨김
+                "modeBarButtonsToRemove": [ # 혹시 나타나도 비활성
+                    "zoom", "pan", "resetCameraDefault3d",
+                    "resetCameraLastSave3d", "orbitRotation", "tableRotation",
+                    "zoom3d", "pan3d", "resetGeo", "hoverClosest3d"
+                ],
+                "scrollZoom": False,
+            },
+        )
