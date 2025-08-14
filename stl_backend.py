@@ -5,19 +5,9 @@ import tempfile
 import numpy as np
 
 # numpy-stl
-try:
-    from stl import mesh
-except Exception as e:
-    raise ImportError(
-        "numpy-stl가 설치되어 있지 않거나 불러올 수 없습니다. "
-        "requirements.txt에 'numpy-stl'을 추가하세요."
-    ) from e
-
-# plotly (렌더링용)
-try:
-    import plotly.graph_objects as go
-except Exception as e:
-    go = None  # 렌더 함수 호출 시 친절한 에러로 안내
+from stl import mesh
+# 렌더용
+import plotly.graph_objects as go
 
 
 # ---------- STL I/O ----------
@@ -60,70 +50,73 @@ def get_bbox(stl_mesh: mesh.Mesh):
 
 
 def get_axis_length(stl_mesh: mesh.Mesh, axis: str) -> float:
-    axis_idx = "XYZ".index(axis.upper())
+    idx = "XYZ".index(axis.upper())
     mins, maxs = get_bbox(stl_mesh)
-    return float(maxs[axis_idx] - mins[axis_idx])
+    return float(maxs[idx] - mins[idx])
+
+
+def get_centroid(stl_mesh: mesh.Mesh) -> np.ndarray:
+    return np.mean(stl_mesh.vectors.reshape(-1, 3), axis=0)
+
+
+# ---------- Rotation Matrices ----------
+def rot_matrix(axis: str, angle_deg: float) -> np.ndarray:
+    a = axis.upper()
+    t = np.deg2rad(angle_deg)
+    c, s = np.cos(t), np.sin(t)
+    if a == "X":
+        return np.array([[1, 0, 0], [0, c, -s], [0, s, c]], dtype=float)
+    if a == "Y":
+        return np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]], dtype=float)
+    if a == "Z":
+        return np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]], dtype=float)
+    return np.eye(3, dtype=float)
 
 
 # ---------- Transforms ----------
-def apply_transform(
+def apply_transform_xyz(
     stl_mesh: mesh.Mesh,
-    axis: str,
-    angle_deg: float,
+    ax_deg: float,
+    ay_deg: float,
+    az_deg: float,
     dx: float,
     dy: float,
     dz: float,
+    pivot: str = "centroid",   # "centroid" | "origin"
 ) -> mesh.Mesh:
-    ax = axis.upper()
-    angle_rad = np.deg2rad(angle_deg)
+    """X→Y→Z 순서로 회전 후 평행이동. pivot 기준 회전."""
+    V = stl_mesh.vectors.reshape(-1, 3)
 
-    if ax == "X":
-        R = np.array(
-            [
-                [1, 0, 0],
-                [0, np.cos(angle_rad), -np.sin(angle_rad)],
-                [0, np.sin(angle_rad), np.cos(angle_rad)],
-            ],
-            dtype=float,
-        )
-    elif ax == "Y":
-        R = np.array(
-            [
-                [np.cos(angle_rad), 0, np.sin(angle_rad)],
-                [0, 1, 0],
-                [-np.sin(angle_rad), 0, np.cos(angle_rad)],
-            ],
-            dtype=float,
-        )
-    elif ax == "Z":
-        R = np.array(
-            [
-                [np.cos(angle_rad), -np.sin(angle_rad), 0],
-                [np.sin(angle_rad), np.cos(angle_rad), 0],
-                [0, 0, 1],
-            ],
-            dtype=float,
-        )
+    if pivot == "centroid":
+        p = get_centroid(stl_mesh)
     else:
-        R = np.eye(3, dtype=float)
+        p = np.zeros(3, dtype=float)
 
-    # 회전
-    stl_mesh.vectors[:] = np.einsum("...ij,jk->...ik", stl_mesh.vectors, R.T)
+    # pivot 이동 → 회전들 → 복귀
+    V -= p
+    if ax_deg != 0:
+        V[:] = V @ rot_matrix("X", ax_deg).T
+    if ay_deg != 0:
+        V[:] = V @ rot_matrix("Y", ay_deg).T
+    if az_deg != 0:
+        V[:] = V @ rot_matrix("Z", az_deg).T
+    V += p
+
     # 평행이동
-    stl_mesh.x += dx
-    stl_mesh.y += dy
-    stl_mesh.z += dz
+    V += np.array([dx, dy, dz], dtype=float)
+
+    stl_mesh.vectors[:] = V.reshape(-1, 3, 3)
     return stl_mesh
 
 
-def apply_scale(stl_mesh: mesh.Mesh, axis: str, target_length: float) -> mesh.Mesh:
+def apply_scale_axis_uniform(stl_mesh: mesh.Mesh, axis: str, target_length: float) -> mesh.Mesh:
     """
-    선택 축의 현재 길이를 target_length로 맞추는 '균등 스케일'(XYZ 동일 배율).
-    원점 기준.
+    선택 축의 길이를 target_length로 맞추는 '균등 스케일'(XYZ 모두 동일비율).
+    pivot은 모델 원점(데이터 그대로) 기준.
     """
-    axis_idx = "XYZ".index(axis.upper())
+    idx = "XYZ".index(axis.upper())
     mins, maxs = get_bbox(stl_mesh)
-    cur_len = float(maxs[axis_idx] - mins[axis_idx])
+    cur_len = float(maxs[idx] - mins[idx])
     if cur_len == 0:
         return stl_mesh
     s = float(target_length) / cur_len
@@ -133,50 +126,29 @@ def apply_scale(stl_mesh: mesh.Mesh, axis: str, target_length: float) -> mesh.Me
 
 # ---------- Rendering ----------
 def render_mesh(stl_mesh: mesh.Mesh):
-    if go is None:
-        raise ImportError(
-            "plotly가 설치되어 있지 않습니다. requirements.txt에 'plotly'를 추가하세요."
-        )
-
     x, y, z = [], [], []
     I, J, K = [], [], []
     idx = 0
     for tri in stl_mesh.vectors:
         for vtx in tri:
-            x.append(vtx[0])
-            y.append(vtx[1])
-            z.append(vtx[2])
-        I.append(idx)
-        J.append(idx + 1)
-        K.append(idx + 2)
+            x.append(vtx[0]); y.append(vtx[1]); z.append(vtx[2])
+        I.append(idx); J.append(idx + 1); K.append(idx + 2)
         idx += 3
 
     xmin, xmax = np.min(x), np.max(x)
     ymin, ymax = np.min(y), np.max(y)
     zmin, zmax = np.min(z), np.max(z)
 
-    xlen = xmax - xmin
-    ylen = ymax - ymin
-    zlen = zmax - zmin
-
     title_text = (
-        f"X: {xmin:.2f} ~ {xmax:.2f} ({xlen:.2f}mm), "
-        f"Y: {ymin:.2f} ~ {ymax:.2f} ({ylen:.2f}mm), "
-        f"Z: {zmin:.2f} ~ {zmax:.2f} ({zlen:.2f}mm)"
+        f"X: {xmin:.2f} ~ {xmax:.2f} ({xmax-xmin:.2f}mm), "
+        f"Y: {ymin:.2f} ~ {ymax:.2f} ({ymax-ymin:.2f}mm), "
+        f"Z: {zmin:.2f} ~ {zmax:.2f} ({zmax-zmin:.2f}mm)"
     )
 
     mesh3d = go.Mesh3d(
-        x=x,
-        y=y,
-        z=z,
-        i=I,
-        j=J,
-        k=K,
-        color="lightblue",
-        opacity=0.5,
-        name="STL Model",
+        x=x, y=y, z=z, i=I, j=J, k=K,
+        color="lightblue", opacity=0.5, name="STL Model"
     )
-
     fig = go.Figure(data=[mesh3d])
     fig.update_layout(
         title=dict(text=title_text, x=0.5, xanchor="center"),
