@@ -6,7 +6,8 @@ from stl_backend import (
     apply_transform_xyz, apply_scale_axis_uniform, apply_scale_axis_absolute,
 )
 
-st.set_page_config(page_title="STL Viewer & Transformer", layout="wide")
+st.set_page_config(page_title="
+STL Viewer & Transformer", layout="wide")
 st.title("STL Viewer & Transformer (Streamlit Cloud Ver.)")
 
 # ---- Global CSS: 왼쪽 패널 전용 스크롤 + 프리뷰 상호작용 차단용 래퍼 ----
