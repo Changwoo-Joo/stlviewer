@@ -1,3 +1,4 @@
+# stl_backend.py
 import io
 import os
 import tempfile
@@ -46,6 +47,12 @@ def get_axis_length(stl_mesh: mesh.Mesh, axis: str) -> float:
     mins, maxs = get_bbox(stl_mesh)
     return float(maxs[idx] - mins[idx])
 
+def get_axis_lengths(stl_mesh: mesh.Mesh):
+    """현재 X/Y/Z 각 축 길이를 튜플로 반환 (lenX, lenY, lenZ)."""
+    mins, maxs = get_bbox(stl_mesh)
+    lengths = maxs - mins
+    return float(lengths[0]), float(lengths[1]), float(lengths[2])
+
 def get_centroid(stl_mesh: mesh.Mesh) -> np.ndarray:
     return np.mean(stl_mesh.vectors.reshape(-1, 3), axis=0)
 
@@ -83,7 +90,7 @@ def apply_transform_xyz(
     return stl_mesh
 
 def apply_scale_axis_uniform(stl_mesh: mesh.Mesh, axis: str, target_length: float) -> mesh.Mesh:
-    """선택 축 길이를 target_length로 맞추는 균등 스케일(XYZ 동일 배율, 원점 기준)."""
+    """선택 축 길이를 target_length로 맞추는 '균등 스케일'(XYZ 동일 배율, 원점 기준)."""
     idx = "XYZ".index(axis.upper())
     mins, maxs = get_bbox(stl_mesh)
     cur_len = float(maxs[idx] - mins[idx])
@@ -93,13 +100,27 @@ def apply_scale_axis_uniform(stl_mesh: mesh.Mesh, axis: str, target_length: floa
     stl_mesh.vectors *= s
     return stl_mesh
 
+def apply_scale_axis_absolute(stl_mesh: mesh.Mesh, axis: str, target_length: float) -> mesh.Mesh:
+    """해당 '한 축만' 목표 길이에 맞추는 '비비례 스케일'(Non-uniform).
+    예: X축만 늘이거나 줄임 (Y,Z 그대로)
+    """
+    axis = axis.upper()
+    idx = "XYZ".index(axis)
+    mins, maxs = get_bbox(stl_mesh)
+    cur_len = float(maxs[idx] - mins[idx])
+    if cur_len == 0:
+        return stl_mesh  # 스케일 불가
+    s = float(target_length) / cur_len
+    # 해당 축 좌표만 스케일
+    stl_mesh.vectors[:, :, idx] *= s
+    return stl_mesh
+
 # ---------- Rendering (Full, Smooth) ----------
 def render_mesh(stl_mesh: mesh.Mesh, height: int = 880):
     """
     매끈한 기본 렌더(항상 Full 품질):
     - Mesh3d만 사용(라인/에지 레이어 없음)
-    - 반투명(opacity=0.5)
-    - 🎯 그림자(조명) 효과 추가: ambient↓, diffuse/specular↑, 광원 위치 지정
+    - 반투명(opacity=0.5) + 조명 추가(입체감)
     """
     V = stl_mesh.vectors  # (n, 3, 3)
     n_tri = V.shape[0]
@@ -119,11 +140,10 @@ def render_mesh(stl_mesh: mesh.Mesh, height: int = 880):
     mesh3d = go.Mesh3d(
         x=x, y=y, z=z, i=I, j=J, k=K,
         color="lightblue",
-        opacity=0.5,            # 그대로 유지
-        flatshading=False,      # 그대로 유지(부드러운 셰이딩)
-        # ✅ 그림자 느낌을 위한 조명값 보강
+        opacity=0.5,            # 시각적으로 매끈
+        flatshading=False,      # 부드러운 셰이딩
         lighting=dict(ambient=0.55, diffuse=0.9, specular=0.25, roughness=0.7),
-        lightposition=dict(x=0.8, y=0.8, z=1.6),  # 광원 위치
+        lightposition=dict(x=0.8, y=0.8, z=1.6),
         hoverinfo="skip",
         name="STL",
     )
