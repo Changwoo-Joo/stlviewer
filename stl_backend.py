@@ -94,16 +94,17 @@ def apply_scale_axis_uniform(stl_mesh: mesh.Mesh, axis: str, target_length: floa
     stl_mesh.vectors *= s
     return stl_mesh
 
-# ---------- Rendering (Full, Smooth) ----------
+# ---------- Rendering (Full, Smooth + Light Edges) ----------
 def render_mesh(stl_mesh: mesh.Mesh, height: int = 880):
     """
-    매끈한 기본 렌더(항상 Full 품질):
-    - Mesh3d만 사용(라인/에지 레이어 없음)
-    - 반투명(opacity=0.5), 조명 최소(ambient 1.0) → 점박이/모아레 최소화
+    Full 품질 렌더(항상 전체 삼각형):
+    - Mesh3d (부드러운 셰이딩, 거의 불투명) + 얇은 에지 라인 오버레이로 경계 강조
+    - 라인은 낮은 불투명도로 최소한만 그려 점박이 느낌 방지
     """
     V = stl_mesh.vectors  # (n, 3, 3)
     n_tri = V.shape[0]
 
+    # 좌표 벡터화
     flat = V.reshape(-1, 3)
     x, y, z = flat[:, 0], flat[:, 1], flat[:, 2]
     base = np.arange(0, n_tri * 3, 3, dtype=np.int32)
@@ -116,17 +117,40 @@ def render_mesh(stl_mesh: mesh.Mesh, height: int = 880):
         f"Z: {mins[2]:.2f} ~ {maxs[2]:.2f} ({maxs[2]-mins[2]:.2f}mm)"
     )
 
+    # 본체(면) – 매끈 & 거의 불투명
     mesh3d = go.Mesh3d(
         x=x, y=y, z=z, i=I, j=J, k=K,
         color="lightblue",
-        opacity=0.5,            # 시각적으로 매끈
-        flatshading=False,      # 부드러운 셰이딩
-        lighting=dict(ambient=1.0, diffuse=0.0, specular=0.0),
+        opacity=0.95,            # 경계 가독성 위해 거의 불투명
+        flatshading=False,       # 부드러운 셰이딩
+        lighting=dict(ambient=0.7, diffuse=0.85, specular=0.15, roughness=0.7),
+        lightposition=dict(x=0.8, y=0.8, z=1.6),
         hoverinfo="skip",
         name="STL",
+        showscale=False,
     )
 
-    fig = go.Figure(data=[mesh3d])
+    data = [mesh3d]
+
+    # 얇은 에지 오버레이(윤곽선) – 낮은 불투명도
+    e = V.reshape(-1, 3, 3)
+    edges = np.concatenate([
+        e[:, [0, 1], :], np.full((e.shape[0], 1, 3), np.nan),
+        e[:, [1, 2], :], np.full((e.shape[0], 1, 3), np.nan),
+        e[:, [2, 0], :], np.full((e.shape[0], 1, 3), np.nan),
+    ], axis=1).reshape(-1, 3)
+    edge_trace = go.Scatter3d(
+        x=edges[:, 0], y=edges[:, 1], z=edges[:, 2],
+        mode="lines",
+        line=dict(width=1),
+        opacity=0.18,            # 낮은 불투명도로 점박이 느낌 최소화
+        hoverinfo="skip",
+        showlegend=False,
+        name="Edges",
+    )
+    data.append(edge_trace)
+
+    fig = go.Figure(data=data)
     fig.update_layout(
         title=dict(text=title_text, x=0.5, xanchor="center"),
         scene=dict(aspectmode="data"),
