@@ -26,10 +26,12 @@ if "shift" not in st.session_state:
 if "pivot_sel" not in st.session_state:
     st.session_state.pivot_sel = "Origin"  # 기본 Origin
 if "preview_quality" not in st.session_state:
-    st.session_state.preview_quality = "Ultra Fast"
+    st.session_state.preview_quality = "Fast"  # 기본 품질 올림(형상 강조)
+if "preview_height" not in st.session_state:
+    st.session_state.preview_height = 880
 
-# ---- 좌/우 레이아웃 ----
-left, right = st.columns([0.38, 0.62], gap="large")
+# ---- 좌/우 레이아웃 (왼쪽 25% / 오른쪽 75%) ----
+left, right = st.columns([0.25, 0.75], gap="large")
 
 with left:
     uploaded = st.file_uploader("Upload STL file", type=["stl"])
@@ -48,9 +50,7 @@ with left:
             az = st.number_input("Z", value=float(st.session_state.angles["Z"]), format="%.6f", key="ang_z")
             pivot = st.radio(
                 "Pivot(회전 기준점)", ["Model centroid", "Origin"],
-                horizontal=True,
-                index=1,  # 기본 Origin
-                key="pivot_sel"
+                horizontal=True, index=1, key="pivot_sel"
             )
 
         with st.expander("Shift (mm)", expanded=True):
@@ -96,7 +96,10 @@ with left:
 
         st.subheader("⚡ Preview Quality")
         st.session_state.preview_quality = st.radio(
-            "미리보기 품질(속도 ↔︎ 정확도)", ["Ultra Fast", "Fast", "Full"], index=0, horizontal=True
+            "미리보기 품질(속도 ↔︎ 정확도)",
+            ["Ultra Fast", "Fast", "Full"],
+            index=1,  # 기본 Fast
+            horizontal=True,
         )
 
         st.download_button(
@@ -110,17 +113,22 @@ with right:
     if st.session_state.mesh is not None:
         st.subheader("📊 Preview")
 
-        # 품질 → 최대 삼각형 수 맵
-        nmap = {"Ultra Fast": 10000, "Fast": 30000, "Full": None}
-        max_tris = nmap.get(st.session_state.preview_quality, 10000)
+        # 품질 → 최대 삼각형 수/에지 표시 맵
+        quality_map = {
+            "Ultra Fast": {"max_tris": 20000, "show_edges": False},
+            "Fast":       {"max_tris": 60000, "show_edges": False},
+            "Full":       {"max_tris": None,  "show_edges": True},  # Full에서만 윤곽선
+        }
+        q = quality_map[st.session_state.preview_quality]
+        max_tris = q["max_tris"]
+        show_edges = q["show_edges"]
 
-        if st.session_state.updated or (st.session_state.last_fig is None):
-            fig = render_mesh(st.session_state.mesh, max_tris=max_tris)
-            st.session_state.last_fig = fig
-            st.session_state.updated = False
-        else:
-            # 품질만 바뀐 경우에도 즉시 반영
-            fig = render_mesh(st.session_state.mesh, max_tris=max_tris)
-            st.session_state.last_fig = fig
-
+        # 항상 최신 품질 반영(속도 충분)
+        fig = render_mesh(
+            st.session_state.mesh,
+            max_tris=max_tris,
+            show_edges=show_edges,
+            height=st.session_state.preview_height,
+        )
+        st.session_state.last_fig = fig
         st.plotly_chart(fig, use_container_width=True)
