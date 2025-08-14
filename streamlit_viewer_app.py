@@ -6,15 +6,14 @@ from stl_backend import (
     apply_transform_xyz, apply_scale_axis_uniform, apply_scale_axis_absolute,
 )
 
-st.set_page_config(page_title="
-STL Viewer & Transformer", layout="wide")
+st.set_page_config(page_title="STL Viewer & Transformer", layout="wide")
 st.title("STL Viewer & Transformer (Streamlit Cloud Ver.)")
 
 # ---- Global CSS: 왼쪽 패널 전용 스크롤 + 프리뷰 상호작용 차단용 래퍼 ----
 st.markdown("""
 <style>
 .left-scroll { max-height: 88vh; overflow-y: auto; padding-right: 10px; }
-.block-container { padding-top: 0.6rem; }
+.block-container { padding-top: 1.6rem; }
 
 /* 프리뷰를 렌더는 하되 마우스 상호작용만 막기 */
 .no-interact .stPlotlyChart { pointer-events: none !important; }
