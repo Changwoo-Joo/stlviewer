@@ -1,59 +1,142 @@
+# stl_backend.py
+import io
+import os
+import tempfile
 import numpy as np
 from stl import mesh
-import io
-import tempfile
 import plotly.graph_objects as go
 
-def load_stl(file_bytes):
+
+# ---------- STL I/O ----------
+def load_stl(file_bytes: bytes) -> mesh.Mesh:
+    """
+    numpy-stl은 파일 경로 로드를 선호하므로 임시파일을 경유한다.
+    """
     with tempfile.NamedTemporaryFile(delete=False, suffix=".stl") as tmp:
         tmp.write(file_bytes)
         tmp.flush()
         path = tmp.name
-    return mesh.Mesh.from_file(path)
+    try:
+        m = mesh.Mesh.from_file(path)
+    finally:
+        try:
+            os.remove(path)
+        except Exception:
+            pass
+    return m
 
-def apply_transform(stl_mesh, axis, angle_deg, dx, dy, dz):
+
+def save_stl_bytes(stl_mesh: mesh.Mesh) -> io.BytesIO:
+    """
+    mesh.save()는 파일경로가 필요하므로 임시파일에 저장 후 BytesIO로 반환.
+    """
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".stl") as tmp:
+        temp_path = tmp.name
+    try:
+        stl_mesh.save(temp_path)
+        with open(temp_path, "rb") as f:
+            data = f.read()
+    finally:
+        try:
+            os.remove(temp_path)
+        except Exception:
+            pass
+    return io.BytesIO(data)
+
+
+# ---------- Geometry Utils ----------
+def get_bbox(stl_mesh: mesh.Mesh):
+    v = stl_mesh.vectors  # (n_tri, 3, 3)
+    mins = np.min(v, axis=(0, 1))
+    maxs = np.max(v, axis=(0, 1))
+    return mins, maxs  # (xmin, ymin, zmin), (xmax, ymax, zmax)
+
+
+def get_axis_length(stl_mesh: mesh.Mesh, axis: str) -> float:
+    axis_idx = "XYZ".index(axis.upper())
+    mins, maxs = get_bbox(stl_mesh)
+    return float(maxs[axis_idx] - mins[axis_idx])
+
+
+# ---------- Transforms ----------
+def apply_transform(
+    stl_mesh: mesh.Mesh,
+    axis: str,
+    angle_deg: float,
+    dx: float,
+    dy: float,
+    dz: float,
+) -> mesh.Mesh:
+    """
+    원점 기준 회전 후 평행이동을 적용.
+    """
+    ax = axis.upper()
     angle_rad = np.deg2rad(angle_deg)
-    rot_matrix = np.identity(3)
-    if axis == "X":
-        rot_matrix = np.array([[1, 0, 0],
-                               [0, np.cos(angle_rad), -np.sin(angle_rad)],
-                               [0, np.sin(angle_rad), np.cos(angle_rad)]])
-    elif axis == "Y":
-        rot_matrix = np.array([[np.cos(angle_rad), 0, np.sin(angle_rad)],
-                               [0, 1, 0],
-                               [-np.sin(angle_rad), 0, np.cos(angle_rad)]])
-    elif axis == "Z":
-        rot_matrix = np.array([[np.cos(angle_rad), -np.sin(angle_rad), 0],
-                               [np.sin(angle_rad), np.cos(angle_rad), 0],
-                               [0, 0, 1]])
 
-    stl_mesh.vectors = np.dot(stl_mesh.vectors, rot_matrix.T)
+    if ax == "X":
+        R = np.array(
+            [
+                [1, 0, 0],
+                [0, np.cos(angle_rad), -np.sin(angle_rad)],
+                [0, np.sin(angle_rad), np.cos(angle_rad)],
+            ],
+            dtype=float,
+        )
+    elif ax == "Y":
+        R = np.array(
+            [
+                [np.cos(angle_rad), 0, np.sin(angle_rad)],
+                [0, 1, 0],
+                [-np.sin(angle_rad), 0, np.cos(angle_rad)],
+            ],
+            dtype=float,
+        )
+    elif ax == "Z":
+        R = np.array(
+            [
+                [np.cos(angle_rad), -np.sin(angle_rad), 0],
+                [np.sin(angle_rad), np.cos(angle_rad), 0],
+                [0, 0, 1],
+            ],
+            dtype=float,
+        )
+    else:
+        R = np.eye(3, dtype=float)
+
+    # 회전
+    stl_mesh.vectors[:] = np.einsum("...ij,jk->...ik", stl_mesh.vectors, R.T)
+
+    # 평행이동
     stl_mesh.x += dx
     stl_mesh.y += dy
     stl_mesh.z += dz
     return stl_mesh
 
-def apply_scale(stl_mesh, axis, target_length):
-    vectors = stl_mesh.vectors
-    axis_index = "XYZ".index(axis)
-    min_val = np.min(vectors[:, :, axis_index])
-    max_val = np.max(vectors[:, :, axis_index])
-    current_length = max_val - min_val
-    if current_length == 0:
-        return stl_mesh  # 스케일 불가
-    scale_factor = target_length / current_length
-    stl_mesh.vectors *= scale_factor
+
+def apply_scale(stl_mesh: mesh.Mesh, axis: str, target_length: float) -> mesh.Mesh:
+    """
+    선택 축의 현재 길이를 target_length로 맞추는 '균등 스케일'(XYZ 동일 배율, 원점 기준).
+    """
+    axis_idx = "XYZ".index(axis.upper())
+    mins, maxs = get_bbox(stl_mesh)
+    cur_len = float(maxs[axis_idx] - mins[axis_idx])
+    if cur_len == 0:
+        return stl_mesh
+    s = float(target_length) / cur_len
+    stl_mesh.vectors *= s
     return stl_mesh
 
-def render_mesh(stl_mesh):
+
+# ---------- Rendering ----------
+def render_mesh(stl_mesh: mesh.Mesh):
     x, y, z = [], [], []
     I, J, K = [], [], []
     idx = 0
-    for vec in stl_mesh.vectors:
-        for vertex in vec:
-            x.append(vertex[0])
-            y.append(vertex[1])
-            z.append(vertex[2])
+    for tri in stl_mesh.vectors:
+        for vtx in tri:
+            x.append(vtx[0])
+            y.append(vtx[1])
+            z.append(vtx[2])
         I.append(idx)
         J.append(idx + 1)
         K.append(idx + 2)
@@ -74,28 +157,21 @@ def render_mesh(stl_mesh):
     )
 
     mesh3d = go.Mesh3d(
-        x=x, y=y, z=z,
-        i=I, j=J, k=K,
-        color='lightblue',
+        x=x,
+        y=y,
+        z=z,
+        i=I,
+        j=J,
+        k=K,
+        color="lightblue",
         opacity=0.5,
-        name='STL Model'
+        name="STL Model",
     )
 
     fig = go.Figure(data=[mesh3d])
     fig.update_layout(
         title=dict(text=title_text, x=0.5, xanchor="center"),
-        scene=dict(aspectmode='data'),
+        scene=dict(aspectmode="data"),
         margin=dict(l=0, r=0, t=60, b=0),
     )
     return fig
-
-def save_stl_bytes(stl_mesh):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".stl") as tmp:
-        stl_mesh.save(tmp.name)
-        tmp.flush()
-        path = tmp.name
-
-    with open(path, "rb") as f:
-        data = f.read()
-
-    return io.BytesIO(data)
