@@ -12,7 +12,7 @@ from stl_backend import (
 st.set_page_config(page_title="STL Viewer & Transformer", layout="wide")
 st.title("STL Viewer & Transformer (Streamlit Cloud Ver.)")
 
-# ---- 세션 상태 초기화 ----
+# ---- 세션 상태 ----
 if "mesh" not in st.session_state:
     st.session_state.mesh = None
 if "updated" not in st.session_state:
@@ -22,9 +22,11 @@ if "last_fig" not in st.session_state:
 if "angles" not in st.session_state:
     st.session_state.angles = {"X": 0.0, "Y": 0.0, "Z": 0.0}
 if "shift" not in st.session_state:
-    st.session_state.shift = [0.0, 0.0, 0.0]  # dx, dy, dz
+    st.session_state.shift = [0.0, 0.0, 0.0]
 if "pivot_sel" not in st.session_state:
-    st.session_state.pivot_sel = "Origin"  # 기본값 Origin
+    st.session_state.pivot_sel = "Origin"  # 기본 Origin
+if "preview_quality" not in st.session_state:
+    st.session_state.preview_quality = "Ultra Fast"
 
 # ---- 좌/우 레이아웃 ----
 left, right = st.columns([0.38, 0.62], gap="large")
@@ -37,30 +39,25 @@ with left:
         st.session_state.angles = {"X": 0.0, "Y": 0.0, "Z": 0.0}
         st.session_state.shift = [0.0, 0.0, 0.0]
 
-    # ---- 변환 메뉴 ----
     if st.session_state.mesh is not None:
         st.subheader("🌀 Transform (Rotation & Translation)")
 
-        # 회전 (X/Y/Z 각도 입력)
         with st.expander("Rotation (degrees)", expanded=True):
             ax = st.number_input("X", value=float(st.session_state.angles["X"]), format="%.6f", key="ang_x")
             ay = st.number_input("Y", value=float(st.session_state.angles["Y"]), format="%.6f", key="ang_y")
             az = st.number_input("Z", value=float(st.session_state.angles["Z"]), format="%.6f", key="ang_z")
             pivot = st.radio(
-                "Pivot(회전 기준점)",
-                ["Model centroid", "Origin"],
+                "Pivot(회전 기준점)", ["Model centroid", "Origin"],
                 horizontal=True,
-                key="pivot_sel",
-                index=1 if st.session_state.pivot_sel == "Origin" else 0
+                index=1,  # 기본 Origin
+                key="pivot_sel"
             )
 
-        # 평행이동
         with st.expander("Shift (mm)", expanded=True):
             dx = st.number_input("Shift X", value=float(st.session_state.shift[0]), format="%.6f", key="sh_x")
             dy = st.number_input("Shift Y", value=float(st.session_state.shift[1]), format="%.6f", key="sh_y")
             dz = st.number_input("Shift Z", value=float(st.session_state.shift[2]), format="%.6f", key="sh_z")
 
-        # 적용
         if st.button("Apply Transform"):
             dax = float(ax) - st.session_state.angles["X"]
             day = float(ay) - st.session_state.angles["Y"]
@@ -74,13 +71,12 @@ with left:
                     st.session_state.mesh,
                     ax_deg=dax, ay_deg=day, az_deg=daz,
                     dx=ddx, dy=ddy, dz=ddz,
-                    pivot=("centroid" if pivot == "Model centroid" else "origin"),
+                    pivot=("origin" if pivot == "Origin" else "centroid"),
                 )
                 st.session_state.angles = {"X": float(ax), "Y": float(ay), "Z": float(az)}
                 st.session_state.shift = [float(dx), float(dy), float(dz)]
                 st.session_state.updated = True
 
-        # ---- Axis-Based Scale ----
         st.subheader("📏 Axis-Based Scale")
         scale_axis = st.selectbox("Scale 기준 축", ["X", "Y", "Z"], key="scale_axis")
         curr_len = get_axis_length(st.session_state.mesh, st.session_state.scale_axis)
@@ -98,7 +94,11 @@ with left:
             )
             st.session_state.updated = True
 
-        # ---- Download ----
+        st.subheader("⚡ Preview Quality")
+        st.session_state.preview_quality = st.radio(
+            "미리보기 품질(속도 ↔︎ 정확도)", ["Ultra Fast", "Fast", "Full"], index=0, horizontal=True
+        )
+
         st.download_button(
             "📥 Download Transformed STL",
             data=save_stl_bytes(st.session_state.mesh),
@@ -107,15 +107,20 @@ with left:
         )
 
 with right:
-    # ---- Preview ----
     if st.session_state.mesh is not None:
         st.subheader("📊 Preview")
-        if st.session_state.updated:
-            fig = render_mesh(st.session_state.mesh)
+
+        # 품질 → 최대 삼각형 수 맵
+        nmap = {"Ultra Fast": 10000, "Fast": 30000, "Full": None}
+        max_tris = nmap.get(st.session_state.preview_quality, 10000)
+
+        if st.session_state.updated or (st.session_state.last_fig is None):
+            fig = render_mesh(st.session_state.mesh, max_tris=max_tris)
             st.session_state.last_fig = fig
             st.session_state.updated = False
         else:
-            fig = st.session_state.last_fig
+            # 품질만 바뀐 경우에도 즉시 반영
+            fig = render_mesh(st.session_state.mesh, max_tris=max_tris)
+            st.session_state.last_fig = fig
 
-        if fig:
-            st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True)
