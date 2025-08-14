@@ -47,6 +47,12 @@ def get_axis_length(stl_mesh: mesh.Mesh, axis: str) -> float:
     mins, maxs = get_bbox(stl_mesh)
     return float(maxs[idx] - mins[idx])
 
+def get_axis_lengths(stl_mesh: mesh.Mesh):
+    """X/Y/Z 각 축 길이를 튜플로 반환 (lenX, lenY, lenZ)."""
+    mins, maxs = get_bbox(stl_mesh)
+    lengths = maxs - mins
+    return float(lengths[0]), float(lengths[1]), float(lengths[2])
+
 def get_centroid(stl_mesh: mesh.Mesh) -> np.ndarray:
     return np.mean(stl_mesh.vectors.reshape(-1, 3), axis=0)
 
@@ -88,52 +94,4 @@ def apply_scale_axis_uniform(stl_mesh: mesh.Mesh, axis: str, target_length: floa
     idx = "XYZ".index(axis.upper())
     mins, maxs = get_bbox(stl_mesh)
     cur_len = float(maxs[idx] - mins[idx])
-    if cur_len == 0:
-        return stl_mesh
-    s = float(target_length) / cur_len
-    stl_mesh.vectors *= s
-    return stl_mesh
-
-# ---------- Rendering (Full, Smooth) ----------
-def render_mesh(stl_mesh: mesh.Mesh, height: int = 880):
-    """
-    매끈한 기본 렌더(항상 Full 품질):
-    - Mesh3d만 사용(라인/에지 레이어 없음)
-    - 반투명(opacity=0.5)
-    - 그림자(조명) 효과 추가
-    """
-    V = stl_mesh.vectors  # (n, 3, 3)
-    n_tri = V.shape[0]
-
-    flat = V.reshape(-1, 3)
-    x, y, z = flat[:, 0], flat[:, 1], flat[:, 2]
-    base = np.arange(0, n_tri * 3, 3, dtype=np.int32)
-    I, J, K = base, base + 1, base + 2
-
-    mins, maxs = flat.min(axis=0), flat.max(axis=0)
-    title_text = (
-        f"X: {mins[0]:.2f} ~ {maxs[0]:.2f} ({maxs[0]-mins[0]:.2f}mm), "
-        f"Y: {mins[1]:.2f} ~ {maxs[1]:.2f} ({maxs[1]-mins[1]:.2f}mm), "
-        f"Z: {mins[2]:.2f} ~ {maxs[2]:.2f} ({maxs[2]-mins[2]:.2f}mm)"
-    )
-
-    mesh3d = go.Mesh3d(
-        x=x, y=y, z=z, i=I, j=J, k=K,
-        color="lightblue",
-        opacity=0.5,            # 시각적으로 매끈
-        flatshading=False,      # 부드러운 셰이딩
-        lighting=dict(ambient=0.55, diffuse=0.9, specular=0.25, roughness=0.7),
-        lightposition=dict(x=0.8, y=0.8, z=1.6),
-        hoverinfo="skip",
-        name="STL",
-    )
-
-    fig = go.Figure(data=[mesh3d])
-    fig.update_layout(
-        title=dict(text=title_text, x=0.5, xanchor="center"),
-        scene=dict(aspectmode="data"),
-        margin=dict(l=0, r=0, t=36, b=0),
-        showlegend=False,
-        height=height,
-    )
-    return fig
+    if
