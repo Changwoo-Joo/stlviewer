@@ -12,6 +12,22 @@ from stl_backend import (
 st.set_page_config(page_title="STL Viewer & Transformer", layout="wide")
 st.title("STL Viewer & Transformer (Streamlit Cloud Ver.)")
 
+# ---- Global CSS: 왼쪽 패널 전용 스크롤 ----
+st.markdown("""
+<style>
+/* 좌측 패널(설정 영역)만 세로 스크롤 */
+.left-scroll {
+  max-height: 88vh;
+  overflow-y: auto;
+  padding-right: 10px;  /* 스크롤바 겹침 방지 */
+}
+/* 전체 패딩 살짝 줄여서 프리뷰 영역 확보 */
+.block-container {
+  padding-top: 0.6rem;
+}
+</style>
+""", unsafe_allow_html=True)
+
 # ---- 세션 상태 ----
 if "mesh" not in st.session_state:
     st.session_state.mesh = None
@@ -26,7 +42,7 @@ if "shift" not in st.session_state:
 if "pivot_sel" not in st.session_state:
     st.session_state.pivot_sel = "Origin"  # 기본 Origin
 if "preview_quality" not in st.session_state:
-    st.session_state.preview_quality = "Fast"  # 기본 품질 올림(형상 강조)
+    st.session_state.preview_quality = "Fast"  # 형상 선명도를 위해 기본 Fast
 if "preview_height" not in st.session_state:
     st.session_state.preview_height = 880
 
@@ -34,6 +50,9 @@ if "preview_height" not in st.session_state:
 left, right = st.columns([0.25, 0.75], gap="large")
 
 with left:
+    # 왼쪽 패널만 스크롤 가능하도록 div 래핑
+    st.markdown('<div class="left-scroll">', unsafe_allow_html=True)
+
     uploaded = st.file_uploader("Upload STL file", type=["stl"])
     if uploaded is not None:
         st.session_state.mesh = load_stl(uploaded.read())
@@ -98,7 +117,7 @@ with left:
         st.session_state.preview_quality = st.radio(
             "미리보기 품질(속도 ↔︎ 정확도)",
             ["Ultra Fast", "Fast", "Full"],
-            index=1,  # 기본 Fast
+            index=1,
             horizontal=True,
         )
 
@@ -109,25 +128,26 @@ with left:
             mime="application/sla",
         )
 
+    # div 닫기
+    st.markdown('</div>', unsafe_allow_html=True)
+
 with right:
     if st.session_state.mesh is not None:
         st.subheader("📊 Preview")
 
-        # 품질 → 최대 삼각형 수/에지 표시 맵
+        # 품질 → 최대 삼각형 수 (엣지 오버레이는 기본 비활성화로 고정)
         quality_map = {
-            "Ultra Fast": {"max_tris": 20000, "show_edges": False},
-            "Fast":       {"max_tris": 60000, "show_edges": False},
-            "Full":       {"max_tris": None,  "show_edges": True},  # Full에서만 윤곽선
+            "Ultra Fast": {"max_tris": 20000},
+            "Fast":       {"max_tris": 60000},
+            "Full":       {"max_tris": None},
         }
-        q = quality_map[st.session_state.preview_quality]
-        max_tris = q["max_tris"]
-        show_edges = q["show_edges"]
+        max_tris = quality_map[st.session_state.preview_quality]["max_tris"]
 
-        # 항상 최신 품질 반영(속도 충분)
+        # 최신 품질로 즉시 렌더(면 위주, 라인 비표시)
         fig = render_mesh(
             st.session_state.mesh,
             max_tris=max_tris,
-            show_edges=show_edges,
+            show_edges=False,                              # ← 윤곽선 비활성화 (점박이 방지)
             height=st.session_state.preview_height,
         )
         st.session_state.last_fig = fig
