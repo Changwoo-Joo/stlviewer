@@ -13,7 +13,7 @@ st.title("STL Viewer & Transformer (Streamlit Cloud Ver.)")
 st.markdown("""
 <style>
 .left-scroll { max-height: 88vh; overflow-y: auto; padding-right: 10px; }
-.block-container { padding-top: 1.6rem; }
+.block-container { padding-top: 2rem; }
 
 /* 프리뷰를 렌더는 하되 마우스 상호작용만 막기 */
 .no-interact .stPlotlyChart { pointer-events: none !important; }
