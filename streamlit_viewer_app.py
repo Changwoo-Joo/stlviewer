@@ -23,7 +23,7 @@ if "last_fig" not in st.session_state: st.session_state.last_fig = None
 if "angles" not in st.session_state: st.session_state.angles = {"X": 0.0, "Y": 0.0, "Z": 0.0}
 if "shift" not in st.session_state: st.session_state.shift = [0.0, 0.0, 0.0]
 if "pivot_sel" not in st.session_state: st.session_state.pivot_sel = "Origin"  # 기본 Origin
-if "preview_height" not in st.session_state: st.session_state.preview_height = 920
+if "preview_height" not in st.session_state: st.session_state.preview_height = 880
 
 # ---- 헬퍼: 입력값 델타 적용 ----
 def _apply_from_inputs(ax, ay, az, dx, dy, dz, pivot_label: str):
@@ -60,7 +60,7 @@ with left:
     if st.session_state.mesh is not None:
         st.subheader("🌀 Transform (Rotation & Translation)")
 
-        # Rotation
+        # 회전(디자인툴처럼 X/Y/Z 각도 입력)
         with st.expander("Rotation (degrees)", expanded=True):
             ax = st.number_input("X", value=float(st.session_state.angles["X"]), format="%.6f", key="ang_x")
             ay = st.number_input("Y", value=float(st.session_state.angles["Y"]), format="%.6f", key="ang_y")
@@ -70,21 +70,21 @@ with left:
                 horizontal=True, index=1, key="pivot_sel"
             )
 
-            # 회전 블록 아래 Apply (회전값 + 현재 shift 값 적용)
+            # 🔹 Rotation 블록 바로 아래 Apply 버튼 (요청사항)
             if st.button("Apply Transform", key="apply_transform_rotation_block"):
                 _apply_from_inputs(ax, ay, az, st.session_state.shift[0], st.session_state.shift[1], st.session_state.shift[2], pivot)
 
-        # Shift
+        # 평행이동
         with st.expander("Shift (mm)", expanded=True):
             dx = st.number_input("Shift X", value=float(st.session_state.shift[0]), format="%.6f", key="sh_x")
             dy = st.number_input("Shift Y", value=float(st.session_state.shift[1]), format="%.6f", key="sh_y")
             dz = st.number_input("Shift Z", value=float(st.session_state.shift[2]), format="%.6f", key="sh_z")
 
-        # 메인 Apply (회전/이동 모두)
+        # 🔹 기존의 Apply 버튼 (회전/이동 모두 고려)
         if st.button("Apply Transform", key="apply_transform_main"):
             _apply_from_inputs(ax, ay, az, dx, dy, dz, pivot)
 
-        # Scale
+        # Axis-Based Scale
         st.subheader("📏 Axis-Based Scale")
         scale_axis = st.selectbox("Scale 기준 축", ["X", "Y", "Z"], key="scale_axis")
         curr_len = get_axis_length(st.session_state.mesh, st.session_state.scale_axis)
@@ -101,7 +101,7 @@ with left:
             )
             st.session_state.updated = True
 
-        # Download
+        # 다운로드
         st.download_button(
             "📥 Download Transformed STL",
             data=save_stl_bytes(st.session_state.mesh),
@@ -113,7 +113,8 @@ with left:
 
 with right:
     if st.session_state.mesh is not None:
-        st.subheader("📊 Preview (Full, orthographic fit)")
+        st.subheader("📊 Preview (Full quality)")
+        # 항상 Full 품질로 렌더 + 경계 강조
         fig = render_mesh(
             st.session_state.mesh,
             height=st.session_state.preview_height,
