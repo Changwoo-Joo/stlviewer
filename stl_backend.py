@@ -111,11 +111,12 @@ def apply_scale_axis_uniform(stl_mesh: mesh.Mesh, axis: str, target_length: floa
     return stl_mesh
 
 
-# ---------- Rendering (Fast) ----------
-def render_mesh(stl_mesh: mesh.Mesh, max_tris: int | None = None):
+# ---------- Rendering (Fast & Solid) ----------
+def render_mesh(stl_mesh: mesh.Mesh, max_tris: int | None = None, show_edges: bool = False, height: int = 880):
     """
     고속 렌더: 완전 벡터화 + 선택적 다운샘플링.
-    max_tris: 프리뷰에 보낼 최대 삼각형 수 (None이면 전체)
+    - 면을 '실체'처럼 보이도록 opacity=1.0, flatshading=False, 라이팅 강화.
+    - show_edges=True일 때 윤곽선(에지) 오버레이.
     """
     V = stl_mesh.vectors  # (n, 3, 3)
     n_tri = V.shape[0]
@@ -150,17 +151,45 @@ def render_mesh(stl_mesh: mesh.Mesh, max_tris: int | None = None):
     mesh3d = go.Mesh3d(
         x=x, y=y, z=z,
         i=I, j=J, k=K,
-        opacity=0.5,
+        opacity=1.0,               # 실체감
         color="lightblue",
-        flatshading=True,
-        lighting=dict(ambient=0.7, diffuse=0.5, specular=0.1, roughness=1.0),
+        flatshading=False,         # 면 보정(하이라이트 부드럽게)
+        lighting=dict(ambient=0.85, diffuse=0.9, specular=0.1, roughness=0.9, fresnel=0.1),
+        lightposition=dict(x=0, y=0, z=1),
         name="STL",
     )
-    fig = go.Figure(data=[mesh3d])
+
+    data = [mesh3d]
+
+    if show_edges:
+        # 각 삼각형의 3개 에지를 라인으로 그린다 (간단/빠름, 중복 허용)
+        e = V.reshape(-1, 3, 3)
+        # 각 tri에 대해 (v0->v1), (v1->v2), (v2->v0)
+        edges = np.concatenate([
+            e[:, [0, 1], :],
+            np.full((e.shape[0], 1, 3), np.nan),
+            e[:, [1, 2], :],
+            np.full((e.shape[0], 1, 3), np.nan),
+            e[:, [2, 0], :],
+            np.full((e.shape[0], 1, 3), np.nan),
+        ], axis=1)  # (n_tri, 2+1+2+1+2+1 = 9, 3)
+        edges = edges.reshape(-1, 3)
+        edge_trace = go.Scatter3d(
+            x=edges[:, 0], y=edges[:, 1], z=edges[:, 2],
+            mode="lines",
+            line=dict(width=1),
+            opacity=0.9,
+            name="Edges",
+            showlegend=False,
+        )
+        data.append(edge_trace)
+
+    fig = go.Figure(data=data)
     fig.update_layout(
         title=dict(text=title_text, x=0.5, xanchor="center"),
         scene=dict(aspectmode="data"),
         margin=dict(l=0, r=0, t=40, b=0),
         showlegend=False,
+        height=height,
     )
     return fig
