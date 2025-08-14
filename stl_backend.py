@@ -3,15 +3,25 @@ import io
 import os
 import tempfile
 import numpy as np
-from stl import mesh
-import plotly.graph_objects as go
+
+# numpy-stl
+try:
+    from stl import mesh
+except Exception as e:
+    raise ImportError(
+        "numpy-stl가 설치되어 있지 않거나 불러올 수 없습니다. "
+        "requirements.txt에 'numpy-stl'을 추가하세요."
+    ) from e
+
+# plotly (렌더링용)
+try:
+    import plotly.graph_objects as go
+except Exception as e:
+    go = None  # 렌더 함수 호출 시 친절한 에러로 안내
 
 
 # ---------- STL I/O ----------
 def load_stl(file_bytes: bytes) -> mesh.Mesh:
-    """
-    numpy-stl은 파일 경로 로드를 선호하므로 임시파일을 경유한다.
-    """
     with tempfile.NamedTemporaryFile(delete=False, suffix=".stl") as tmp:
         tmp.write(file_bytes)
         tmp.flush()
@@ -27,9 +37,6 @@ def load_stl(file_bytes: bytes) -> mesh.Mesh:
 
 
 def save_stl_bytes(stl_mesh: mesh.Mesh) -> io.BytesIO:
-    """
-    mesh.save()는 파일경로가 필요하므로 임시파일에 저장 후 BytesIO로 반환.
-    """
     with tempfile.NamedTemporaryFile(delete=False, suffix=".stl") as tmp:
         temp_path = tmp.name
     try:
@@ -67,9 +74,6 @@ def apply_transform(
     dy: float,
     dz: float,
 ) -> mesh.Mesh:
-    """
-    원점 기준 회전 후 평행이동을 적용.
-    """
     ax = axis.upper()
     angle_rad = np.deg2rad(angle_deg)
 
@@ -105,7 +109,6 @@ def apply_transform(
 
     # 회전
     stl_mesh.vectors[:] = np.einsum("...ij,jk->...ik", stl_mesh.vectors, R.T)
-
     # 평행이동
     stl_mesh.x += dx
     stl_mesh.y += dy
@@ -115,7 +118,8 @@ def apply_transform(
 
 def apply_scale(stl_mesh: mesh.Mesh, axis: str, target_length: float) -> mesh.Mesh:
     """
-    선택 축의 현재 길이를 target_length로 맞추는 '균등 스케일'(XYZ 동일 배율, 원점 기준).
+    선택 축의 현재 길이를 target_length로 맞추는 '균등 스케일'(XYZ 동일 배율).
+    원점 기준.
     """
     axis_idx = "XYZ".index(axis.upper())
     mins, maxs = get_bbox(stl_mesh)
@@ -129,6 +133,11 @@ def apply_scale(stl_mesh: mesh.Mesh, axis: str, target_length: float) -> mesh.Me
 
 # ---------- Rendering ----------
 def render_mesh(stl_mesh: mesh.Mesh):
+    if go is None:
+        raise ImportError(
+            "plotly가 설치되어 있지 않습니다. requirements.txt에 'plotly'를 추가하세요."
+        )
+
     x, y, z = [], [], []
     I, J, K = [], [], []
     idx = 0
