@@ -15,7 +15,7 @@ st.title("STL Viewer & Transformer (Streamlit Cloud Ver.)")
 st.markdown("""
 <style>
 /* 상단 여백 조금만 남기기 */
-.block-container { padding-top: 0.6rem !important; }
+.block-container { padding-top: 2rem !important; }
 
 /* Plotly 그래프 타이틀 줄바꿈 방지 */
 div.plot-container div.gtitle {
