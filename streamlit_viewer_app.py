@@ -1,12 +1,8 @@
 # streamlit_viewer_app.py
 import streamlit as st
 from stl_backend import (
-    load_stl,
-    save_stl_bytes,
-    render_mesh,
-    get_axis_length,
-    apply_transform_xyz,
-    apply_scale_axis_uniform,
+    load_stl, save_stl_bytes, render_mesh,
+    get_axis_length, apply_transform_xyz, apply_scale_axis_uniform,
 )
 
 st.set_page_config(page_title="STL Viewer & Transformer", layout="wide")
@@ -15,42 +11,24 @@ st.title("STL Viewer & Transformer (Streamlit Cloud Ver.)")
 # ---- Global CSS: 왼쪽 패널 전용 스크롤 ----
 st.markdown("""
 <style>
-/* 좌측 패널(설정 영역)만 세로 스크롤 */
-.left-scroll {
-  max-height: 88vh;
-  overflow-y: auto;
-  padding-right: 10px;  /* 스크롤바 겹침 방지 */
-}
-/* 전체 패딩 살짝 줄여서 프리뷰 영역 확보 */
-.block-container {
-  padding-top: 0.6rem;
-}
+.left-scroll { max-height: 88vh; overflow-y: auto; padding-right: 10px; }
+.block-container { padding-top: 0.6rem; }
 </style>
 """, unsafe_allow_html=True)
 
 # ---- 세션 상태 ----
-if "mesh" not in st.session_state:
-    st.session_state.mesh = None
-if "updated" not in st.session_state:
-    st.session_state.updated = False
-if "last_fig" not in st.session_state:
-    st.session_state.last_fig = None
-if "angles" not in st.session_state:
-    st.session_state.angles = {"X": 0.0, "Y": 0.0, "Z": 0.0}
-if "shift" not in st.session_state:
-    st.session_state.shift = [0.0, 0.0, 0.0]
-if "pivot_sel" not in st.session_state:
-    st.session_state.pivot_sel = "Origin"  # 기본 Origin
-if "preview_quality" not in st.session_state:
-    st.session_state.preview_quality = "Fast"  # 형상 선명도를 위해 기본 Fast
-if "preview_height" not in st.session_state:
-    st.session_state.preview_height = 880
+if "mesh" not in st.session_state: st.session_state.mesh = None
+if "updated" not in st.session_state: st.session_state.updated = False
+if "last_fig" not in st.session_state: st.session_state.last_fig = None
+if "angles" not in st.session_state: st.session_state.angles = {"X": 0.0, "Y": 0.0, "Z": 0.0}
+if "shift" not in st.session_state: st.session_state.shift = [0.0, 0.0, 0.0]
+if "pivot_sel" not in st.session_state: st.session_state.pivot_sel = "Origin"  # 기본 Origin
+if "preview_height" not in st.session_state: st.session_state.preview_height = 880
 
 # ---- 좌/우 레이아웃 (왼쪽 25% / 오른쪽 75%) ----
 left, right = st.columns([0.25, 0.75], gap="large")
 
 with left:
-    # 왼쪽 패널만 스크롤 가능하도록 div 래핑
     st.markdown('<div class="left-scroll">', unsafe_allow_html=True)
 
     uploaded = st.file_uploader("Upload STL file", type=["stl"])
@@ -63,6 +41,7 @@ with left:
     if st.session_state.mesh is not None:
         st.subheader("🌀 Transform (Rotation & Translation)")
 
+        # 회전(디자인툴처럼 X/Y/Z 각도 입력)
         with st.expander("Rotation (degrees)", expanded=True):
             ax = st.number_input("X", value=float(st.session_state.angles["X"]), format="%.6f", key="ang_x")
             ay = st.number_input("Y", value=float(st.session_state.angles["Y"]), format="%.6f", key="ang_y")
@@ -72,12 +51,15 @@ with left:
                 horizontal=True, index=1, key="pivot_sel"
             )
 
+        # 평행이동
         with st.expander("Shift (mm)", expanded=True):
             dx = st.number_input("Shift X", value=float(st.session_state.shift[0]), format="%.6f", key="sh_x")
             dy = st.number_input("Shift Y", value=float(st.session_state.shift[1]), format="%.6f", key="sh_y")
             dz = st.number_input("Shift Z", value=float(st.session_state.shift[2]), format="%.6f", key="sh_z")
 
+        # 적용 버튼
         if st.button("Apply Transform"):
+            # 절대값 UI → 델타만 적용
             dax = float(ax) - st.session_state.angles["X"]
             day = float(ay) - st.session_state.angles["Y"]
             daz = float(az) - st.session_state.angles["Z"]
@@ -96,6 +78,7 @@ with left:
                 st.session_state.shift = [float(dx), float(dy), float(dz)]
                 st.session_state.updated = True
 
+        # Axis-Based Scale
         st.subheader("📏 Axis-Based Scale")
         scale_axis = st.selectbox("Scale 기준 축", ["X", "Y", "Z"], key="scale_axis")
         curr_len = get_axis_length(st.session_state.mesh, st.session_state.scale_axis)
@@ -106,21 +89,13 @@ with left:
             format="%.6f",
             step=1.0,
         )
-
         if st.button("Apply Axis-Based Scaling"):
             st.session_state.mesh = apply_scale_axis_uniform(
                 st.session_state.mesh, st.session_state.scale_axis, float(target_length)
             )
             st.session_state.updated = True
 
-        st.subheader("⚡ Preview Quality")
-        st.session_state.preview_quality = st.radio(
-            "미리보기 품질(속도 ↔︎ 정확도)",
-            ["Ultra Fast", "Fast", "Full"],
-            index=1,
-            horizontal=True,
-        )
-
+        # 다운로드
         st.download_button(
             "📥 Download Transformed STL",
             data=save_stl_bytes(st.session_state.mesh),
@@ -128,26 +103,14 @@ with left:
             mime="application/sla",
         )
 
-    # div 닫기
     st.markdown('</div>', unsafe_allow_html=True)
 
 with right:
     if st.session_state.mesh is not None:
-        st.subheader("📊 Preview")
-
-        # 품질 → 최대 삼각형 수 (엣지 오버레이는 기본 비활성화로 고정)
-        quality_map = {
-            "Ultra Fast": {"max_tris": 20000},
-            "Fast":       {"max_tris": 60000},
-            "Full":       {"max_tris": None},
-        }
-        max_tris = quality_map[st.session_state.preview_quality]["max_tris"]
-
-        # 최신 품질로 즉시 렌더(면 위주, 라인 비표시)
+        st.subheader("📊 Preview (Full quality)")
+        # 항상 Full 품질로 렌더
         fig = render_mesh(
             st.session_state.mesh,
-            max_tris=max_tris,
-            show_edges=False,                              # ← 윤곽선 비활성화 (점박이 방지)
             height=st.session_state.preview_height,
         )
         st.session_state.last_fig = fig
